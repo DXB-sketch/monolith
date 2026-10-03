@@ -250,6 +250,11 @@ const [seqdvgc, allen, concept] = PROJECTS as [
     max-width: 44rem;
   }
 
+  /* Small text over the scene: bone, not ash, so contrast holds over the glow. */
+  .hero__eyebrow {
+    color: var(--bone);
+  }
+
   .hero__title {
     display: grid;
   }
@@ -275,9 +280,9 @@ const [seqdvgc, allen, concept] = PROJECTS as [
       background:
         linear-gradient(
           90deg,
-          transparent 40%,
-          rgb(var(--basalt-rgb) / 0.35) 60%,
-          rgb(var(--basalt-rgb) / 0.6) 100%
+          transparent 38%,
+          rgb(var(--basalt-rgb) / 0.5) 58%,
+          rgb(var(--basalt-rgb) / 0.72) 100%
         ),
         linear-gradient(0deg, rgb(var(--basalt-rgb) / 0.75) 0%, transparent 40%),
         linear-gradient(180deg, rgb(var(--basalt-rgb) / 0.5) 0%, transparent 18%);

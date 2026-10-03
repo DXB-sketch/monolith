@@ -65,32 +65,80 @@ interface NavigatorHints extends Navigator {
 }
 
 interface GpuInfo {
-  webgl2: boolean;
+  /** WebGL2 (or a WebGPU hardware adapter, which implies it) is available. */
+  available: boolean;
+  /** Software rendering, or no usable hardware adapter. */
+  software: boolean;
+  /** Renderer string or WebGPU vendor/architecture, for classification. */
   renderer: string;
 }
 
-function probeGpu(): GpuInfo {
+interface WebGpuAdapter {
+  isFallbackAdapter?: boolean;
+  info?: {
+    vendor?: string;
+    architecture?: string;
+    description?: string;
+    isFallbackAdapter?: boolean;
+  };
+}
+
+interface WebGpu {
+  requestAdapter(options?: { powerPreference?: string }): Promise<WebGpuAdapter | null>;
+}
+
+/**
+ * Asynchronous GPU check via WebGPU's adapter: it never blocks the main thread,
+ * unlike creating a WebGL context. Returns null when WebGPU can't answer and the
+ * WebGL probe has to run instead.
+ */
+async function probeWebGpu(): Promise<GpuInfo | null> {
+  const gpu = (navigator as Navigator & { gpu?: WebGpu }).gpu;
+  if (!gpu) return null;
+  try {
+    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      // No usable hardware adapter. Desktop Linux Chrome may simply not ship
+      // WebGPU yet, so let the WebGL probe decide there.
+      const ua = navigator.userAgent;
+      if (/Linux/.test(ua) && !/Android/.test(ua)) return null;
+      return { available: true, software: true, renderer: '' };
+    }
+    const info = adapter.info ?? {};
+    const software = Boolean(info.isFallbackAdapter ?? adapter.isFallbackAdapter);
+    const renderer = [info.vendor, info.architecture, info.description].filter(Boolean).join(' ');
+    return { available: true, software, renderer };
+  } catch {
+    return null;
+  }
+}
+
+/** Synchronous WebGL2 probe. Blocks briefly while the context is created. */
+function probeWebGl(): GpuInfo {
   try {
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: true });
-    if (!gl) return { webgl2: false, renderer: '' };
+    // No failIfMajorPerformanceCaveat: it makes creation several times slower, and
+    // software renderers are caught by name below.
+    const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance' });
+    if (!gl) return { available: false, software: false, renderer: '' };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = String(
       ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
     );
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return { webgl2: true, renderer };
+    return { available: true, software: SOFTWARE_GPU.test(renderer), renderer };
   } catch {
-    return { webgl2: false, renderer: '' };
+    return { available: false, software: false, renderer: '' };
   }
 }
 
 const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
-/** Old or entry-level mobile GPUs: poster only. */
+/** Old or entry-level mobile GPUs (WebGL renderer strings and WebGPU architectures): poster only. */
 const WEAK_GPU =
-  /mali-[t4]|mali-g(31|51|52)\b|adreno \(tm\) [2-5]\d\d|adreno [2-5]\d\d|powervr|intel.*gma/i;
+  /mali-[t4]|mali-g(31|51|52)\b|adreno \(tm\) [2-5]\d\d|adreno [2-5]\d\d|adreno-[2-5]|midgard|utgard|powervr|sgx|intel.*gma/i;
 /** Phones, tablets and older integrated laptop GPUs: the lighter scene. */
-const MID_GPU = /mali|adreno|apple gpu|apple a\d|xclipse|immortalis|maleoon|intel.*hd graphics/i;
+const MID_GPU =
+  /mali|adreno|qualcomm|arm|apple gpu|apple a\d|apple|xclipse|samsung|immortalis|maleoon|imagination|intel.*hd graphics/i;
 
 /** Read a forced tier from `?tier=` for testing and poster capture. */
 function forcedTier(): QualityTier | null {
@@ -103,31 +151,45 @@ export function prefersReducedMotion(): boolean {
 }
 
 /**
- * Detect the tier once at start-up from cheap signals: reduced motion, save-data,
- * WebGL2 support, the GPU renderer string, device memory, cores and screen size.
+ * Cheap, synchronous signals only: forced tier, reduced motion, save-data, slow
+ * network, memory and cores. Returns a final tier when these settle it, or null
+ * when the GPU has to be probed. Safe to call before first paint.
  */
-export function detectTier(): QualityTier {
+export function detectTierFast(): QualityTier | null {
   const forced = forcedTier();
   const reduced = prefersReducedMotion();
   if (forced) return reduced && forced !== 'off' ? 'off' : forced;
   if (reduced) return 'off';
 
   const nav = navigator as NavigatorHints;
-  const gpu = probeGpu();
-  if (!gpu.webgl2) return 'off';
-  if (SOFTWARE_GPU.test(gpu.renderer)) return 'low';
-
   const memory = nav.deviceMemory ?? 8;
   const cores = nav.hardwareConcurrency ?? 4;
   const saveData = nav.connection?.saveData === true;
   const slowNet = /(^|-)2g$/.test(nav.connection?.effectiveType ?? '');
-  if (saveData || slowNet || memory <= 2 || cores <= 2 || WEAK_GPU.test(gpu.renderer)) {
-    return 'low';
-  }
+  if (saveData || slowNet || memory <= 2 || cores <= 2) return 'low';
+  return null;
+}
 
+/**
+ * The full decision: cheap signals, then the GPU. Uses WebGPU's adapter where
+ * available (asynchronous, no main-thread cost); otherwise creates a WebGL2
+ * context, which can block for tens of milliseconds (far more on software
+ * renderers). Call it after first paint, and only on pages that show the scene.
+ */
+export async function detectTier(): Promise<QualityTier> {
+  const fast = detectTierFast();
+  if (fast) return fast;
+
+  const gpu = (await probeWebGpu()) ?? probeWebGl();
+  if (!gpu.available) return 'off';
+  if (gpu.software || WEAK_GPU.test(gpu.renderer)) return 'low';
+
+  const nav = navigator as NavigatorHints;
+  const memory = nav.deviceMemory ?? 8;
+  const cores = nav.hardwareConcurrency ?? 4;
   const shortSide = Math.min(screen.width, screen.height);
   const coarse = matchMedia('(pointer: coarse)').matches;
-  // Apple Silicon Macs also report "Apple GPU"; only treat it as mobile on touch devices.
+  // Apple Silicon Macs also report Apple; only treat it as mobile on touch devices.
   const midGpu = MID_GPU.test(gpu.renderer) && !(/apple/i.test(gpu.renderer) && !coarse);
   if (midGpu || coarse || shortSide < 768 || memory <= 4 || cores <= 4) {
     return 'medium';

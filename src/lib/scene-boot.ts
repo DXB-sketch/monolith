@@ -9,6 +9,7 @@
  */
 import {
   detectTier,
+  detectTierFast,
   prefersReducedMotion,
   type QualityTier,
   type SceneTier,
@@ -16,6 +17,8 @@ import {
 import type { SceneHandle } from '../scene/index';
 
 let tier: QualityTier = 'off';
+/** True until the GPU has been probed (deferred until a scene page has painted). */
+let pending = true;
 let handle: SceneHandle | null = null;
 let loading = false;
 let anchor: Element | null = null;
@@ -31,7 +34,8 @@ const isSceneTier = (t: QualityTier): t is SceneTier => t === 'high' || t === 'm
 /** ClientRouter replaces <html> attributes on navigation, so state is re-applied after swaps. */
 function applyRootState() {
   html.classList.add('js');
-  html.dataset.tier = tier;
+  if (pending) delete html.dataset.tier;
+  else html.dataset.tier = tier;
 }
 
 /** Run after the browser has painted the HTML, preferably when idle. */
@@ -55,6 +59,7 @@ function sync() {
 
 function teardown(nextTier: QualityTier) {
   tier = nextTier;
+  pending = false;
   applyRootState();
   const current = handle;
   handle = null;
@@ -64,9 +69,15 @@ function teardown(nextTier: QualityTier) {
 }
 
 function load() {
-  if (handle || loading || !isSceneTier(tier)) return;
+  if (handle || loading) return;
+  if (!pending && !isSceneTier(tier)) return;
   loading = true;
   afterFirstPaint(async () => {
+    if (pending) {
+      tier = await detectTier();
+      pending = false;
+      applyRootState();
+    }
     const target = canvas();
     if (!target || !isSceneTier(tier)) {
       loading = false;
@@ -144,7 +155,11 @@ export function initSceneBoot() {
   if (started) return;
   started = true;
 
-  tier = detectTier();
+  const fast = detectTierFast();
+  if (fast) {
+    tier = fast;
+    pending = false;
+  }
   applyRootState();
 
   document.addEventListener('astro:after-swap', applyRootState);
