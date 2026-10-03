@@ -1,0 +1,143 @@
+/*
+ * Self-hosted fonts (Latin subset). font-display: swap keeps text visible
+ * while the files load. Sora 200 (hero display) and Sora 300 (body) are
+ * preloaded from BaseLayout.astro.
+ */
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+  src: url('/fonts/sora-latin-200-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/sora-latin-300-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/sora-latin-500-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-500-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ── Type roles ─────────────────────────────────────────────────────────── */
+
+.display {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-display);
+  font-size: var(--step-5);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-text);
+  text-wrap: balance;
+}
+
+.display-2 {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-display);
+  font-size: var(--step-4);
+  line-height: 1.05;
+  letter-spacing: var(--tracking-display);
+  color: var(--color-text);
+  text-wrap: balance;
+}
+
+/* The final phrase of key headlines: Sora 500 in lava. Large text only. */
+.display em,
+.display-2 em,
+.accent-phrase {
+  font-style: normal;
+  font-weight: var(--weight-strong);
+  color: var(--color-accent);
+}
+
+.heading {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-body);
+  font-size: var(--step-3);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-heading);
+  color: var(--color-text);
+  text-wrap: balance;
+}
+
+.subheading {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-body);
+  font-size: var(--step-2);
+  line-height: var(--leading-snug);
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.lead {
+  font-size: var(--step-1);
+  font-weight: var(--weight-body);
+  line-height: 1.5;
+  color: var(--color-text-body);
+  max-width: 40ch;
+  text-wrap: pretty;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-mono);
+  font-size: var(--step--2);
+  line-height: 1.4;
+  letter-spacing: var(--tracking-mono);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.label--strong {
+  font-weight: var(--weight-mono-strong);
+  color: var(--color-text);
+}
+
+.wordmark {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-wordmark);
+  text-transform: uppercase;
+  /* letter-spacing adds trailing space after the last glyph; pull it back */
+  margin-right: calc(var(--tracking-wordmark) * -1);
+}
