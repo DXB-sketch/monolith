@@ -81,6 +81,16 @@
 
 ## Performance
 
+**Vercel deploy preview** (`dpl_EyZUxDwUm2KddXBFLutE87RQASMe`, commit `a315f21`, iad1): the build succeeded. I ran Lighthouse mobile three times from this container through a temporary share link, which adds one auth redirect:
+
+| Run | Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 95 | 100 | 100 | 63* | 2.2 s | 2.4 s | 0 ms | 0 |
+| 2 | 97 | 100 | 100 | 63* | 1.9 s | 2.1 s | 0 ms | 0 |
+| 3 | 97 | 100 | 100 | 63* | 1.9 s | 2.1 s | 0 ms | 0 |
+
+\* SEO's only failing audit is `is-crawlable`: Vercel adds `X-Robots-Tag: noindex` to every preview deployment on purpose. Production deployments don't get this header, and the local build scores SEO 100.
+
 Measured in this cloud container, which has **no GPU**: WebGL runs on SwiftShader (software). Lighthouse ran locally against the production build served with gzip (`serve`).
 
 **Lighthouse mobile** (default Moto G Power emulation, 4× CPU, slow 4G), three runs after the final fix:
@@ -93,7 +103,7 @@ Measured in this cloud container, which has **no GPU**: WebGL runs on SwiftShade
 
 Before the tier-detection change, Performance was 72–87 with 0.5–1.9 s TBT. The cause was the synchronous WebGL probe: SwiftShader context creation took about 2 s under throttling.
 
-Lighthouse's emulated device lands on the Low tier (no hardware adapter), so these scores cover the poster path, which is what most constrained phones get. The deploy preview was not measured; see Known issues.
+Lighthouse's emulated device lands on the Low tier (no hardware adapter), so these scores cover the poster path, which is what most constrained phones get.
 
 **Bundle sizes** (gzip -9):
 
@@ -141,7 +151,9 @@ The acceptance targets (High at 60 fps on a recent laptop, Medium at 30 fps or b
 
 ## Known issues
 
-- **Deploy preview.** I created the Vercel project `monolith` (team "DXB-sketch's projects") linked to this repo; pushes to this branch create previews. The status of the first preview build is in the PR. New projects use the team's default deployment protection, so the preview may need a Vercel login. That is also why Lighthouse wasn't run against it.
+- **Deploy preview.** I created the Vercel project `monolith` (team "DXB-sketch's projects") linked to this repo; every push to this branch creates a preview. Previews sit behind the team's default deployment protection, so viewing one needs a Vercel login or a share link.
+- **Vercel labels this branch's deployment target as "production".** `main` is still the production branch and holds only the docs; check this before merging.
+- **Node version.** Vercel warns that `engines.node: ">=22.12.0"` will float to new Node majors. Pin it (e.g. `22.x`) if that's unwanted.
 - **Real-device testing is outstanding:** fps per tier, iOS Safari and Firefox (the WebGL probe path), and tier classification on actual phones.
 - The `site` URL in `astro.config.mjs` is a placeholder (`https://monolith.example`) until [DOMAIN] is supplied. It affects canonical and Open Graph URLs only.
 - The dev-only scene route's script (445 bytes) is emitted to `_astro/` in production builds, but no page references it.
