@@ -1,0 +1,179 @@
+// Obsidian monolith: glossy black glass with conchoidal ripples, and magma
+// light leaking through a few branching fissures.
+// Prepended in TS: precision, noise.glsl, atmosphere.glsl, #defines.
+
+uniform vec4 uFaceHeat;          // front (+z), right (+x), back (-z), left (-x)
+uniform vec3 uPointer;           // world-space heat point
+uniform float uPointerHeat;      // 0..1, smoothed on the CPU
+uniform float uPointerRadius;    // metres
+uniform float uFissureGain;
+uniform float uHeight;
+uniform vec4 uLavaLights[LAVA_LIGHTS]; // xyz world position, w intensity
+
+varying vec3 vObjPos;
+varying vec3 vObjNormal;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+
+// Magma veins. Returns x = bright core, y = soft halo.
+vec2 fissures(vec3 p, float heat) {
+  // Stretch vertically so the veins mostly run up and down the slab.
+  vec3 sp = p * vec3(1.0, 0.6, 1.0);
+  vec3 warp = vec3(snoise(sp * 0.3), snoise(sp * 0.3 + 19.1), snoise(sp * 0.3 + 41.7));
+  vec3 q = sp + warp * 0.75;
+  // Fine jitter makes the lines jagged, like rock rather than cells.
+  q += vec3(snoise(p * 2.7), snoise(p * 2.7 + 7.3), snoise(p * 2.7 + 13.9)) * 0.04;
+
+  // Main veins: exact Voronoi borders, masked so only a few survive.
+  const float S1 = 0.34;
+  float dMain = voronoiBorder3(q * S1 + 3.1) / S1;
+  float region = snoise(p * vec3(0.17, 0.085, 0.17) + vec3(4.2, 1.3, 7.7));
+  float veins = smoothstep(-0.12, 0.3, region + heat * 0.3);
+  // Breaks and brightness changes along each vein.
+  float along = snoise(p * vec3(0.8, 0.5, 0.8) + 23.0);
+  veins *= smoothstep(-0.65, -0.15, along);
+
+  float width = mix(0.006, 0.04, smoothstep(-0.5, 0.9, snoise(p * 0.6 + 5.0)));
+  width *= 1.0 + heat * 0.6;
+  float aa = fwidth(dMain);
+  float core = (1.0 - smoothstep(width, width + aa * 1.5 + 0.003, dMain)) * veins;
+  float halo = exp(-dMain / (0.05 + width * 2.5)) * veins;
+
+#if FISSURE_OCTAVES > 1
+  // Branches: smaller cracks that only grow off the main veins.
+  const float S2 = 1.25;
+  float dBr = voronoiEdge3(q * S2 + 11.0) / S2;
+  float nearMain = 1.0 - smoothstep(0.1, 0.9 + heat * 0.7, dMain);
+  float brMask = nearMain * veins * smoothstep(-0.1, 0.5, snoise(p * 1.4 + 3.3));
+  float brW = width * 0.45;
+  float brCore = 1.0 - smoothstep(brW, brW + fwidth(dBr) * 1.5 + 0.002, dBr);
+  core = max(core, brCore * brMask * 0.45);
+  halo += exp(-dBr / 0.035) * brMask * 0.3;
+#endif
+
+#if FISSURE_OCTAVES > 2
+  // Hairline crazing right beside the hottest veins.
+  const float S3 = 3.6;
+  float dMi = voronoiEdge3(q * S3 + 29.0) / S3;
+  float nearHot = (1.0 - smoothstep(0.03, 0.35, dMain)) * veins;
+  float miCore = 1.0 - smoothstep(0.003, 0.003 + fwidth(dMi) * 1.5 + 0.0015, dMi);
+  core = max(core, miCore * nearHot * 0.35);
+#endif
+
+  return vec2(core, halo);
+}
+
+// Environment seen in a reflection: the dusk sky above, dark ground with lava glow below.
+vec3 environment(vec3 r, float baseGlow) {
+  vec3 ground = uBasalt * 0.35 + uLava * 0.08 * baseGlow;
+  return mix(ground, skyColor(r), smoothstep(-0.04, 0.06, r.y));
+}
+
+float ggx(float NdotH, float rough) {
+  float a = rough * rough;
+  float a2 = a * a;
+  float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+  return a2 / (3.14159 * d * d);
+}
+
+void main() {
+  vec3 p = vObjPos;
+
+  // ── Heat inputs ────────────────────────────────────────────────────────
+  vec3 on = normalize(vObjNormal);
+  vec4 faceW = pow(max(vec4(on.z, on.x, -on.z, -on.x), 0.0), vec4(2.0));
+  float faceHeat = dot(faceW, uFaceHeat) / max(dot(faceW, vec4(1.0)), 1e-3);
+  float pd = length(vWorldPos - uPointer) / uPointerRadius;
+  float pointerHeat = uPointerHeat * exp(-pd * pd);
+  float heat = clamp(faceHeat * 0.6 + pointerHeat, 0.0, 1.5);
+
+  // ── Surface normal: conchoidal ripples as a screen-space bump ─────────
+  vec3 N = normalize(vWorldNormal);
+  float rn = snoise(p * 0.3 + 7.0);
+  float rippleAmp = smoothstep(-0.2, 0.8, snoise(p * 0.2 + 1.5));
+  float ripple = sin(rn * 16.0 + snoise(p * 1.2) * 1.5) * rippleAmp * 0.0045;
+  float grain = snoise(p * 7.0) * 0.0012;
+  float bump = ripple + grain;
+  vec3 dpdx = dFdx(vWorldPos);
+  vec3 dpdy = dFdy(vWorldPos);
+  float dhx = dFdx(bump);
+  float dhy = dFdy(bump);
+  vec3 r1 = cross(dpdy, N);
+  vec3 r2 = cross(N, dpdx);
+  float det = dot(dpdx, r1);
+  vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+  N = normalize(abs(det) * N - grad);
+
+  vec3 V = normalize(cameraPosition - vWorldPos);
+  float NdotV = clamp(dot(N, V), 1e-3, 1.0);
+  vec3 R = reflect(-V, N);
+
+  // Fine ash dust settles near the base and dulls the gloss.
+  float dust = smoothstep(1.6, 0.0, p.y + snoise(p * 1.6) * 0.5) * 0.85;
+  float rough = mix(0.07, 0.4, dust) + abs(snoise(p * 0.9)) * 0.04;
+
+  // ── Lighting ──────────────────────────────────────────────────────────
+  vec3 albedo = mix(uObsidian * 0.55, uAsh * 0.07, dust);
+  float ao = mix(0.3, 1.0, smoothstep(0.0, 1.8, p.y));
+  float baseGlow = exp(-p.y * 0.6);
+
+  vec3 sunCol = mix(uEmber, uLava, 0.55) * 2.2 * uGlow;
+  vec3 L = normalize(uSunDir);
+  vec3 H = normalize(L + V);
+  float NdotL = max(dot(N, L), 0.0);
+
+  vec3 diffuse = albedo * (
+    mix(uMagma * 0.35, uObsidianEdge * 0.6, N.y * 0.5 + 0.5) * ao +
+    sunCol * NdotL * 0.6
+  );
+
+  float F0 = 0.05;
+  float fres = F0 + (1.0 - F0) * pow(1.0 - NdotV, 5.0);
+  vec3 env = environment(R, baseGlow);
+  // Rough reflections lose the sharp horizon: blend toward its average.
+  env = mix(env, mix(uMagma, uEmber, 0.3) * 0.5, smoothstep(0.1, 0.4, rough));
+  // The pointer warms what the stone reflects.
+  env = mix(env, env + uLava * 0.12 + uMagma * 0.6, pointerHeat);
+  vec3 spec = env * fres * mix(1.0, 0.35, dust) * (0.55 + 0.45 * smoothstep(-0.01, 0.01, ripple));
+  spec += sunCol * ggx(max(dot(N, H), 0.0), max(rough, 0.12)) * NdotL * fres * 0.6;
+
+  // Rim: the afterglow catching the silhouette.
+  vec3 sunFlat = normalize(vec3(L.x, 0.0, L.z));
+  float rim = pow(1.0 - NdotV, 6.0) * smoothstep(-0.1, 0.7, dot(N, sunFlat));
+  spec += sunCol * rim * 0.35;
+
+  // Lava channel light on the lower stone.
+  for (int i = 0; i < LAVA_LIGHTS; i++) {
+    vec3 toL = uLavaLights[i].xyz - vWorldPos;
+    float d2 = dot(toL, toL);
+    vec3 Ll = toL * inversesqrt(d2);
+    float atten = uLavaLights[i].w / (1.0 + d2 * 0.12);
+    diffuse += albedo * uLava * max(dot(N, Ll), 0.0) * atten * 3.0;
+    float sl = pow(max(dot(R, Ll), 0.0), 40.0);
+    spec += uLava * sl * atten * fres * 6.0;
+  }
+
+  // ── Fissures ──────────────────────────────────────────────────────────
+  vec2 f = fissures(p, heat);
+  float phase = snoise(p * 0.18 + 2.0) * 6.2831;
+  float t = uTime;
+  float pulse = 0.74 + 0.15 * sin(t * 0.52 + phase)
+                     + 0.07 * sin(t * 1.37 + phase * 1.9)
+                     + 0.05 * sin(t * 0.21 + phase * 0.7);
+  float flow = 0.5 + 0.5 * smoothstep(-0.7, 0.9,
+    snoise(vec3(p.x * 0.9, p.y * 0.32 - t * 0.08, p.z * 0.9)));
+  float hotter = mix(1.25, 0.75, smoothstep(0.0, uHeight, p.y));
+  float intensity = pulse * flow * hotter * (1.0 + faceHeat * 1.4 + pointerHeat * 2.4) * uFissureGain;
+
+  vec3 coreCol = mix(uLava, uLavaHot, 0.8) * f.x * 10.0;
+  vec3 haloCol = mix(uEmber, uLava, 0.65) * f.y * 1.6;
+  vec3 emission = (coreCol + haloCol) * intensity;
+
+  // A faint warmth in the glass around the pointer, as if heated from inside.
+  emission += (uMagma * 1.4 + uLava * 0.06) * pointerHeat * (0.5 + 0.5 * f.y + 0.4 * abs(ripple) * 100.0);
+
+  // The crack itself replaces the glass surface.
+  vec3 color = (diffuse + spec) * (1.0 - clamp(f.x, 0.0, 1.0)) + emission;
+
+  gl_FragColor = vec4(safeHdr(applyFog(color, vWorldPos)), 1.0);
+}

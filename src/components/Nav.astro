@@ -70,8 +70,12 @@ const isCurrent = (href: string) => path === href || path.startsWith(`${href}/`)
       if (!open && returnFocus) toggle.focus();
     };
 
-    toggle.addEventListener('click', () => {
-      setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+    toggle.addEventListener('click', (event) => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      setOpen(open);
+      // Opened from the keyboard (detail 0): the links precede the toggle in the
+      // DOM, so move focus into them rather than past them.
+      if (open && event.detail === 0) menu.querySelector('a')?.focus();
     });
 
     nav.addEventListener('keydown', (event) => {

@@ -11,6 +11,7 @@ export default defineConfig({
   adapter: vercel(),
   trailingSlash: 'ignore',
   prefetch: false,
+  devToolbar: { enabled: false },
   build: {
     inlineStylesheets: 'auto',
   },
