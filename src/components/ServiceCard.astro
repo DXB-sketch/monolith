@@ -1,0 +1,53 @@
+---
+import type { Service } from '../lib/site';
+
+interface Props {
+  service: Service;
+  index: number;
+}
+
+const { service, index } = Astro.props;
+---
+
+<article class="service-card">
+  <p class="label">
+    <span class="service-card__num">0{index + 1}</span> {service.package}
+  </p>
+  <h3 class="service-card__name">{service.name}</h3>
+  <p class="service-card__desc">{service.description}</p>
+  <p class="service-card__price">{service.price}</p>
+</article>
+
+<style>
+  .service-card {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--space-s);
+    height: 100%;
+    padding: var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+  }
+
+  .service-card__num {
+    color: var(--lava);
+  }
+
+  .service-card__name {
+    font-size: var(--step-3);
+    font-weight: var(--weight-display);
+    letter-spacing: var(--tracking-display);
+    line-height: 1.05;
+  }
+
+  .service-card__price {
+    padding-top: var(--space-s);
+    border-top: var(--hairline);
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.04em;
+    color: var(--bone);
+  }
+</style>

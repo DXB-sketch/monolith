@@ -1,0 +1,47 @@
+---
+/** A plain content block on an obsidian panel, used by the Phase 1 stub pages. */
+interface Props {
+  title?: string;
+}
+
+const { title } = Astro.props;
+---
+
+<section class="section">
+  <div class="container">
+    <div class="section__panel">
+      {title && <h2 class="subheading">{title}</h2>}
+      <slot />
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    position: relative;
+    padding-bottom: var(--space-xl);
+  }
+
+  .section__panel {
+    display: grid;
+    gap: var(--space-s);
+    justify-items: start;
+    max-width: 48rem;
+    padding: var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+  }
+
+  .section__panel :global(ul),
+  .section__panel :global(ol) {
+    display: grid;
+    gap: var(--space-2xs);
+    padding-left: 1.2em;
+  }
+
+  .section__panel :global(li::marker) {
+    color: var(--lava);
+  }
+</style>

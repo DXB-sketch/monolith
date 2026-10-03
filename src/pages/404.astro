@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageIntro from '../components/PageIntro.astro';
+---
+
+<BaseLayout title="Off the map" description="This page doesn’t exist.">
+  <PageIntro
+    eyebrow="404 · Unknown terrain"
+    title="You’ve wandered off the"
+    accent="edge of the map."
+    lead="Nothing has cooled into shape here yet. The way back is solid ground."
+  >
+    <a class="btn btn--primary" href="/">
+      Back to the monolith
+    </a>
+  </PageIntro>
+</BaseLayout>

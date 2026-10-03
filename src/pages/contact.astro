@@ -1,0 +1,23 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageIntro from '../components/PageIntro.astro';
+import Section from '../components/Section.astro';
+import { SITE } from '../lib/site';
+---
+
+<BaseLayout
+  title="Start a project"
+  description="Start a website project with Monolith Web Studio in Wamuran, Queensland."
+>
+  <PageIntro
+    eyebrow="Contact"
+    title="Let’s make something"
+    accent="that stands."
+    lead="Tell me what you need and roughly what you’d like to spend. I’ll come back with honest advice."
+  />
+
+  <Section title="Email me">
+    <p>{SITE.email}</p>
+    <p>The project brief form and call booking are on their way. For now, email is best.</p>
+  </Section>
+</BaseLayout>

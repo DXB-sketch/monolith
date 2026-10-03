@@ -1,0 +1,45 @@
+---
+interface Props {
+  eyebrow: string;
+  /** Headline text. The `accent` phrase is appended in Sora 500 lava. */
+  title: string;
+  accent?: string;
+  lead?: string;
+}
+
+const { eyebrow, title, accent, lead } = Astro.props;
+---
+
+<header class="page-intro">
+  <div class="container page-intro__inner">
+    <p class="label">{eyebrow}</p>
+    <h1 class="display-2 page-intro__title">
+      {title}
+      {accent && (
+        <>
+          {' '}
+          <em>{accent}</em>
+        </>
+      )}
+    </h1>
+    {lead && <p class="lead">{lead}</p>}
+    <slot />
+  </div>
+</header>
+
+<style>
+  .page-intro {
+    position: relative;
+    padding-block: calc(var(--nav-height) + var(--space-3xl)) var(--space-2xl);
+  }
+
+  .page-intro__inner {
+    display: grid;
+    gap: var(--space-m);
+    justify-items: start;
+  }
+
+  .page-intro__title {
+    max-width: 18ch;
+  }
+</style>

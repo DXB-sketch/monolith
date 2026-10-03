@@ -1,0 +1,24 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageIntro from '../../components/PageIntro.astro';
+import Section from '../../components/Section.astro';
+import { LAB, type LabEntry } from '../../lib/site';
+
+export function getStaticPaths() {
+  return LAB.map((entry) => ({ params: { slug: entry.slug }, props: { entry } }));
+}
+
+interface Props {
+  entry: LabEntry;
+}
+
+const { entry } = Astro.props;
+---
+
+<BaseLayout title={entry.title} description={entry.summary}>
+  <PageIntro eyebrow="Lab · Experiment" title={entry.title} lead={entry.summary} />
+  <Section title="Write-up">
+    <p>[WRITE-UP TO BE SUPPLIED]</p>
+    <a href="/lab">Back to the Lab</a>
+  </Section>
+</BaseLayout>

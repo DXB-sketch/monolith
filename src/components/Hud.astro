@@ -1,0 +1,172 @@
+---
+/**
+ * Instrument-style HUD over the scene. Readouts top left, chapter index top right.
+ * The chapter index is real navigation: each item links to its home section.
+ * Live chapter tracking arrives with the scroll story in Phase 2; for now the
+ * first chapter is marked as the starting point.
+ */
+import { CHAPTERS, SITE } from '../lib/site';
+---
+
+<div class="hud" data-hud>
+  <aside class="hud__readouts" aria-label="Scene readout">
+    <p class="label">{SITE.coordinates}</p>
+    <p class="label">
+      Core temp <span class="hud__value">1,160°C</span>
+    </p>
+    <p class="label hud__live">
+      <span class="hud__dot" aria-hidden="true"></span>Live
+    </p>
+  </aside>
+
+  <nav class="hud__index" aria-label="Chapters">
+    <ol>
+      {CHAPTERS.map((chapter, i) => (
+        <li>
+          <a
+            class="hud__link label"
+            href={`#${chapter.id}`}
+            data-chapter-link={chapter.id}
+            data-active={i === 0 ? '' : undefined}
+          >
+            <span class="hud__num">{chapter.index}</span>
+            <span class="hud__name">{chapter.label}</span>
+          </a>
+        </li>
+      ))}
+    </ol>
+  </nav>
+</div>
+
+<script>
+  // Hide the HUD once the plain safety-net section is reached.
+  function bindHud() {
+    const hud = document.querySelector<HTMLElement>('[data-hud]');
+    const end = document.querySelector('[data-hud-end]');
+    if (!hud || !end || hud.dataset.bound) return;
+    hud.dataset.bound = 'true';
+    new IntersectionObserver(([entry]) => {
+      if (!entry) return;
+      const past = entry.isIntersecting || entry.boundingClientRect.top < 0;
+      hud.toggleAttribute('data-hidden', past);
+    }).observe(end);
+  }
+  bindHud();
+  document.addEventListener('astro:page-load', bindHud);
+</script>
+
+<style>
+  .hud {
+    display: none;
+  }
+
+  @media (min-width: 64rem) {
+    .hud {
+      display: block;
+      transition:
+        opacity var(--dur-slow) var(--ease-out),
+        visibility 0s linear 0s;
+    }
+
+    .hud[data-hidden] {
+      opacity: 0;
+      visibility: hidden;
+      transition:
+        opacity var(--dur-slow) var(--ease-out),
+        visibility 0s linear var(--dur-slow);
+    }
+  }
+
+  .hud__readouts,
+  .hud__index {
+    position: fixed;
+    top: calc(var(--nav-offset) + var(--nav-height) + var(--space-l));
+    z-index: var(--z-hud);
+  }
+
+  .hud__readouts {
+    left: var(--gutter);
+    display: grid;
+    gap: var(--space-3xs);
+  }
+
+  .hud__value {
+    color: var(--bone);
+  }
+
+  .hud__live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    color: var(--bone);
+  }
+
+  .hud__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--lava);
+    animation: hud-pulse 2.4s var(--ease-in-out) infinite;
+  }
+
+  @keyframes hud-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.35;
+      transform: scale(0.7);
+    }
+  }
+
+  .hud__index {
+    right: var(--gutter);
+  }
+
+  .hud__index ol {
+    display: grid;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .hud__link {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.9em;
+    min-height: 32px;
+    padding-inline: 0.5rem;
+    text-decoration: none;
+    color: var(--ash);
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+
+  .hud__link::after {
+    content: '';
+    width: 14px;
+    height: 1px;
+    background: var(--obsidian-edge);
+    transition:
+      width var(--dur-base) var(--ease-out),
+      background-color var(--dur-base) var(--ease-out);
+  }
+
+  .hud__link:hover,
+  .hud__link[data-active] {
+    color: var(--bone);
+  }
+
+  .hud__link:hover::after,
+  .hud__link[data-active]::after {
+    width: 28px;
+    background: var(--lava);
+  }
+
+  .hud__num {
+    color: var(--lava);
+  }
+</style>

@@ -1,0 +1,47 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageIntro from '../../components/PageIntro.astro';
+import Section from '../../components/Section.astro';
+import { PROJECTS, CTA, type Project } from '../../lib/site';
+
+export function getStaticPaths() {
+  return PROJECTS.map((project) => ({ params: { slug: project.slug }, props: { project } }));
+}
+
+interface Props {
+  project: Project;
+}
+
+const { project } = Astro.props;
+const index = PROJECTS.findIndex((p) => p.slug === project.slug);
+const next = PROJECTS[(index + 1) % PROJECTS.length]!;
+---
+
+<BaseLayout title={project.title} description={project.summary}>
+  <PageIntro
+    eyebrow={
+      project.concept ? 'Concept · Unofficial redesign' : `Case study · ${project.clientType}`
+    }
+    title={project.title}
+    lead={project.summary}
+  >
+    <p>{project.client}</p>
+    {project.liveUrl && (
+      <a href={project.liveUrl} rel="noopener" target="_blank">
+        Visit the live site<span class="visually-hidden"> (opens in a new tab)</span>{' '}
+        <span aria-hidden="true">↗</span>
+      </a>
+    )}
+  </PageIntro>
+
+  <Section title="The full case study">
+    <p>The challenge, key decisions, visuals and results for this project: [TO BE SUPPLIED]</p>
+  </Section>
+
+  <Section title="Next project">
+    <a href={`/work/${next.slug}`}>{next.title}</a>
+    <a class="btn btn--primary" href={CTA.href}>
+      {CTA.label}
+    </a>
+  </Section>
+</BaseLayout>

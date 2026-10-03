@@ -1,0 +1,463 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hud from '../components/Hud.astro';
+import FaceCard from '../components/FaceCard.astro';
+import ServiceCard from '../components/ServiceCard.astro';
+import { PROJECTS, SERVICES, LAB, SITE, CTA } from '../lib/site';
+
+const [seqdvgc, allen, concept] = PROJECTS as [
+  (typeof PROJECTS)[number],
+  (typeof PROJECTS)[number],
+  (typeof PROJECTS)[number],
+];
+---
+
+<BaseLayout>
+  <Hud />
+
+  <!-- 00 — Arrival -->
+  <section id="arrival" class="hero" aria-labelledby="hero-title" data-scene-anchor>
+    <div class="container hero__inner">
+      <div class="hero__copy">
+        <p class="label hero__eyebrow">
+          <span class="chapter-num">00</span> Monolith Web Studio · {SITE.location}
+        </p>
+        <h1 id="hero-title" class="display hero__title">
+          <span class="hero__line">Forged in fire.</span>
+          <span class="hero__line">
+            <em>Built to stand.</em>
+          </span>
+        </h1>
+        <p class="lead hero__intro">
+          I design and build websites for businesses across South East Queensland. Award-level craft
+          that stays fast, accessible and easy to update. One person, start to finish.
+        </p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href={CTA.href}>
+            {CTA.label}
+            <span class="btn__arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+          <a class="btn btn--ghost" href="#face-i">
+            Skip to the work
+            <span class="btn__arrow" aria-hidden="true">
+              ↓
+            </span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="story">
+    <!-- 01 — Face I -->
+    <section id="face-i" class="chapter" aria-labelledby="face-i-title">
+      <div class="container chapter__inner">
+        <p class="label chapter__eyebrow">
+          <span class="chapter-num">01</span> Face I · Selected work
+        </p>
+        <h2 id="face-i-title" class="visually-hidden">
+          Selected work: {seqdvgc.title}
+        </h2>
+        <FaceCard project={seqdvgc} />
+      </div>
+    </section>
+
+    <!-- 02 — Face II -->
+    <section id="face-ii" class="chapter chapter--alt" aria-labelledby="face-ii-title">
+      <div class="container chapter__inner">
+        <p class="label chapter__eyebrow">
+          <span class="chapter-num">02</span> Face II · Selected work
+        </p>
+        <h2 id="face-ii-title" class="visually-hidden">
+          Selected work: {allen.title}
+        </h2>
+        <FaceCard project={allen} />
+      </div>
+    </section>
+
+    <!-- 03 — The Lab -->
+    <section id="the-lab" class="chapter" aria-labelledby="the-lab-title">
+      <div class="container chapter__inner chapter__inner--split">
+        <div class="chapter__copy">
+          <p class="label chapter__eyebrow">
+            <span class="chapter-num">03</span> The Lab
+          </p>
+          <h2 id="the-lab-title" class="display-2">
+            Experiments in <em>light and stone.</em>
+          </h2>
+          <p class="lead">
+            The Lab is where I test ideas before they reach a client’s site: shaders, motion studies
+            and interaction experiments.
+          </p>
+          <ul class="lab-list">
+            {LAB.map((entry) => (
+              <li>
+                <a class="lab-list__link" href={`/lab/${entry.slug}`}>
+                  <span class="lab-list__title">{entry.title}</span>
+                  <span class="lab-list__summary">{entry.summary}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+          <a class="btn btn--ghost" href="/lab">
+            Visit the Lab
+            <span class="btn__arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+        </div>
+        <FaceCard project={concept} />
+      </div>
+    </section>
+
+    <!-- 04 — The Core -->
+    <section id="the-core" class="chapter chapter--core" aria-labelledby="the-core-title">
+      <div class="container chapter__inner">
+        <p class="label chapter__eyebrow">
+          <span class="chapter-num">04</span> The Core
+        </p>
+        <h2 id="the-core-title" class="heading core__title">
+          Three ways to work together. Every one is hand-built by me.
+        </h2>
+        <ul class="core__services">
+          {SERVICES.map((service, index) => (
+            <li>
+              <ServiceCard service={service} index={index} />
+            </li>
+          ))}
+        </ul>
+        <div class="core__cta">
+          <p class="display-2 core__cta-title">
+            Let’s make something <em>that stands.</em>
+          </p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href={CTA.href}>
+              {CTA.label}
+              <span class="btn__arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+            <a class="btn btn--ghost" href="/services">
+              Services and pricing
+              <span class="btn__arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- The plain safety net: everything a visitor needs, no experience required. -->
+  <section class="plain" aria-labelledby="plain-title" data-hud-end>
+    <div class="container">
+      <h2 id="plain-title" class="heading plain__title">
+        The short version
+      </h2>
+      <div class="plain__grid">
+        <div class="plain__col">
+          <h3 class="label">What I make</h3>
+          <dl class="plain__services">
+            {SERVICES.map((service) => (
+              <div class="plain__service">
+                <dt>
+                  <span class="plain__service-name">{service.name}</span>
+                  <span class="plain__service-pkg">{service.package}</span>
+                </dt>
+                <dd>{service.description}</dd>
+                <dd class="plain__price">{service.price}</dd>
+              </div>
+            ))}
+          </dl>
+          <p>Ongoing care and hosting: [DETAILS TO BE SUPPLIED]</p>
+        </div>
+
+        <div class="plain__col">
+          <h3 class="label">Who I am</h3>
+          <p>
+            I’m {SITE.founder}, a designer and developer working on my own from Wamuran, at the foot
+            of the Glasshouse Mountains. You talk to the person who makes your site, from the first
+            call to launch day and after.
+          </p>
+          <p>
+            <a href="/about">More about me and how I work</a>
+          </p>
+        </div>
+
+        <div class="plain__col">
+          <h3 class="label">Start a project</h3>
+          <p>
+            Tell me what you need and roughly what you’d like to spend. I’ll come back with honest
+            advice, even if that’s “you don’t need me yet”.
+          </p>
+          <p>Email: {SITE.email}</p>
+          <a class="btn btn--primary" href={CTA.href}>
+            {CTA.label}
+            <span class="btn__arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .chapter-num {
+    color: var(--lava);
+    margin-right: 0.5em;
+  }
+
+  /* ── 00 Arrival ──────────────────────────────────────────────────────── */
+  .hero {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    min-height: 100vh;
+    min-height: 100svh;
+    padding-block: calc(var(--nav-height) + var(--space-3xl)) var(--space-2xl);
+  }
+
+  /* A scrim behind the copy keeps text contrast independent of the scene. */
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        0deg,
+        rgb(var(--basalt-rgb) / 0.85) 0%,
+        rgb(var(--basalt-rgb) / 0.45) 30%,
+        transparent 55%
+      ),
+      linear-gradient(180deg, rgb(var(--basalt-rgb) / 0.5) 0%, transparent 18%);
+  }
+
+  .hero__inner {
+    position: relative;
+    display: grid;
+  }
+
+  .hero__copy {
+    display: grid;
+    gap: var(--space-m);
+    justify-items: start;
+    max-width: 44rem;
+  }
+
+  .hero__title {
+    display: grid;
+  }
+
+  .hero__line {
+    display: block;
+  }
+
+  .hero__intro {
+    max-width: 36ch;
+  }
+
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-top: var(--space-2xs);
+  }
+
+  /* Desktop: copy sits right of the monolith, which stands just left of centre. */
+  @media (min-width: 64rem) {
+    .hero::before {
+      background:
+        linear-gradient(
+          90deg,
+          transparent 40%,
+          rgb(var(--basalt-rgb) / 0.35) 60%,
+          rgb(var(--basalt-rgb) / 0.6) 100%
+        ),
+        linear-gradient(0deg, rgb(var(--basalt-rgb) / 0.75) 0%, transparent 40%),
+        linear-gradient(180deg, rgb(var(--basalt-rgb) / 0.5) 0%, transparent 18%);
+    }
+
+    .hero__inner {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+    }
+
+    .hero__copy {
+      grid-column: 2;
+    }
+
+    .hero__title {
+      font-size: min(var(--step-5), 5.1vw);
+    }
+  }
+
+  /* ── Chapters (stacked plainly until the Phase 2 scroll story) ─────────── */
+  .story {
+    position: relative;
+  }
+
+  .chapter {
+    position: relative;
+    padding-block: var(--space-section);
+  }
+
+  .chapter__inner {
+    display: grid;
+    gap: var(--space-l);
+    justify-items: start;
+  }
+
+  .chapter--alt .chapter__inner {
+    justify-items: end;
+  }
+
+  .chapter--alt .chapter__eyebrow {
+    justify-self: end;
+  }
+
+  .chapter__inner--split {
+    gap: var(--space-2xl);
+  }
+
+  @media (min-width: 64rem) {
+    .chapter__inner--split {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: end;
+    }
+  }
+
+  .chapter__copy {
+    display: grid;
+    gap: var(--space-m);
+    justify-items: start;
+  }
+
+  .lab-list {
+    display: grid;
+    gap: var(--space-xs);
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lab-list__link {
+    display: grid;
+    gap: var(--space-3xs);
+    padding: var(--space-s) 0;
+    border-top: var(--hairline);
+    border-bottom: var(--hairline);
+    text-decoration: none;
+  }
+
+  .lab-list__title {
+    color: var(--bone);
+    font-weight: var(--weight-strong);
+  }
+
+  .lab-list__link:hover .lab-list__title {
+    color: var(--lava);
+  }
+
+  .lab-list__summary {
+    max-width: var(--measure);
+    color: var(--ash-soft);
+    font-size: var(--step--1);
+  }
+
+  .core__title {
+    max-width: 24ch;
+  }
+
+  .core__services {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: var(--space-s);
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .core__cta {
+    display: grid;
+    gap: var(--space-l);
+    justify-items: start;
+    margin-top: var(--space-2xl);
+  }
+
+  .core__cta-title {
+    max-width: 14ch;
+  }
+
+  /* ── The plain section ───────────────────────────────────────────────── */
+  .plain {
+    position: relative;
+    padding-block: var(--space-3xl);
+    border-top: var(--hairline);
+    background: var(--basalt);
+  }
+
+  .plain__title {
+    margin-bottom: var(--space-xl);
+  }
+
+  .plain__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+    gap: var(--space-xl);
+  }
+
+  .plain__col {
+    display: grid;
+    align-content: start;
+    justify-items: start;
+    gap: var(--space-s);
+  }
+
+  .plain__services {
+    display: grid;
+    gap: var(--space-s);
+    width: 100%;
+    margin: 0;
+  }
+
+  .plain__service {
+    display: grid;
+    gap: 0.2rem;
+    padding-bottom: var(--space-s);
+    border-bottom: var(--hairline);
+  }
+
+  .plain__service dt {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: baseline;
+  }
+
+  .plain__service-name {
+    color: var(--bone);
+    font-weight: var(--weight-strong);
+  }
+
+  .plain__service-pkg {
+    color: var(--ash);
+    font-size: var(--step--1);
+  }
+
+  .plain__service dd {
+    margin: 0;
+  }
+
+  .plain__price {
+    font-family: var(--font-mono);
+    font-size: var(--step--1);
+    color: var(--bone);
+  }
+</style>
