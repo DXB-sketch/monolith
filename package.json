@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "astro": "astro"
+    "astro": "astro",
+    "posters": "node scripts/render-posters.mjs"
   },
   "dependencies": {
     "@astrojs/vercel": "^11.0.11",

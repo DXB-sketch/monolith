@@ -2,14 +2,14 @@
 /**
  * The persistent, decorative scene layer: a static poster that is always present,
  * and the WebGL canvas that cross-fades in over it once the first frame renders.
- * Persisted across ClientRouter navigations with transition:persist in BaseLayout.
+ * Persisted across ClientRouter navigations with transition:persist.
  *
  * Nothing in here carries information. It is aria-hidden and never receives
  * pointer events; the scene reads the pointer from the window instead.
  */
 ---
 
-<div class="stage" aria-hidden="true" data-scene-stage>
+<div class="stage" aria-hidden="true" data-scene-stage transition:persist="scene">
   <picture class="stage__poster">
     <source
       type="image/avif"

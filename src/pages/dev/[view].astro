@@ -1,0 +1,70 @@
+---
+/**
+ * Dev-only scene viewer, used by scripts/render-posters.mjs.
+ * Only generated under `astro dev`; production builds emit no /dev pages.
+ *
+ *   /dev/scene?tier=high|medium   live scene, no UI
+ *   /dev/scene?capture=12         frozen at t = 12s, drawing buffer preserved
+ */
+import '../../styles/global.css';
+
+export function getStaticPaths() {
+  return import.meta.env.DEV ? [{ params: { view: 'scene' } }] : [];
+}
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Scene viewer</title>
+  </head>
+  <body>
+    <canvas data-dev-canvas></canvas>
+    <script>
+      import { createScene } from '../../scene/index';
+
+      const params = new URLSearchParams(location.search);
+      const tier = params.get('tier') === 'medium' ? 'medium' : 'high';
+      const captureAt = params.get('capture');
+      const pointer = params.get('pointer')?.split(',').map(Number);
+      const canvas = document.querySelector<HTMLCanvasElement>('[data-dev-canvas]')!;
+      const w = window as unknown as { __sceneReady?: boolean; __sceneError?: string };
+
+      createScene(canvas, {
+        tier,
+        debugHide: params.get('hide')?.split(','),
+        debugNoPost: params.has('nopost'),
+        capture: captureAt ? { time: Number(captureAt) } : undefined,
+        onFirstFrame: () => {
+          // Give the frozen frame a few extra renders so pointer heat settles.
+          setTimeout(() => (w.__sceneReady = true), captureAt ? 1500 : 0);
+        },
+      })
+        .then((scene) => {
+          if (pointer && pointer.length === 2) scene.setPointer(pointer[0]!, pointer[1]!);
+          scene.resume();
+        })
+        .catch((error: unknown) => {
+          w.__sceneError = String(error);
+          console.error(error);
+        });
+    </script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+
+      canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </body>
+</html>
