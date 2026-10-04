@@ -33,17 +33,14 @@ const html = document.documentElement;
 const temperature = new Intl.NumberFormat('en-AU');
 
 export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
-  // Where the page really is: ClientRouter has already restored it on back/forward.
   // A refresh records each scroller's *cached* position and puts it back after
-  // measuring; after a ClientRouter swap that cache is stale (the top of the
-  // page), so clear it first, and put the real position back if anything moved it.
-  let restoreY = window.scrollY;
+  // measuring. After a ClientRouter swap that cache is stale (the top of the
+  // page), so clear it first, and keep the page exactly where it really is.
   const refresh = () => {
+    const y = window.scrollY;
     ScrollTrigger.clearScrollMemory();
     ScrollTrigger.refresh();
-    if (Math.abs(window.scrollY - restoreY) > 1) {
-      window.scrollTo({ top: restoreY, behavior: 'instant' });
-    }
+    if (Math.abs(window.scrollY - y) > 1) window.scrollTo({ top: y, behavior: 'instant' });
     ScrollTrigger.update();
   };
   const scroll = await createScroll(mode === 'full');
@@ -159,6 +156,15 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
   };
   document.addEventListener('click', onClick, true);
 
+  // Keyboard users can tab into content that hasn't been revealed yet: finish
+  // its reveal at once so focus never lands on something invisible.
+  const onFocusIn = (event: FocusEvent) => {
+    const block = (event.target as Element).closest?.('[data-reveal]');
+    if (!block) return;
+    gsap.getTweensOf(block).forEach((tween) => tween.progress(1));
+  };
+  root.addEventListener('focusin', onFocusIn);
+
   const ctx = gsap.context(() => {
     // Progress through the whole story drives the camera and scene state.
     const progress = ScrollTrigger.create({
@@ -196,8 +202,7 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
   if (hashIndex > 0 && mode !== 'static') {
     const sectionTop = sections[hashIndex]!.getBoundingClientRect().top;
     if (Math.abs(sectionTop) < 4) {
-      restoreY = chapterScrollY(hashIndex);
-      window.scrollTo({ top: restoreY, behavior: 'instant' });
+      window.scrollTo({ top: chapterScrollY(hashIndex), behavior: 'instant' });
     }
   }
 
@@ -261,7 +266,8 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
         }
 
         gsap.from(el, {
-          autoAlpha: 0,
+          // Opacity only: visibility:hidden would drop links out of the tab order.
+          opacity: 0,
           y: mode === 'full' ? 28 : 0,
           duration: mode === 'full' ? 1.3 : 0.8,
           ease: mode === 'full' ? 'expo.out' : 'power2.out',
@@ -275,6 +281,7 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
   return {
     unmount() {
       document.removeEventListener('click', onClick, true);
+      root.removeEventListener('focusin', onFocusIn);
       hud?.removeAttribute('data-washed');
       lineTweens.forEach((tween) => {
         tween.scrollTrigger?.kill();
