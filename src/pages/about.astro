@@ -1,0 +1,40 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageIntro from '../components/PageIntro.astro';
+import Section from '../components/Section.astro';
+import { SITE, CTA } from '../lib/site';
+---
+
+<BaseLayout
+  title="About"
+  description="Monolith is a one-person web studio in Wamuran, at the foot of the Glasshouse Mountains."
+>
+  <PageIntro
+    eyebrow="About"
+    title="One person,"
+    accent="start to finish."
+    lead="You talk to the maker, not an account manager."
+  />
+
+  <Section title={`Hi, I’m ${SITE.founder}`}>
+    <p>[FOUNDER PHOTO AND BIO TO BE SUPPLIED]</p>
+  </Section>
+
+  <Section title="How I work">
+    <p>
+      Clubs, venues, cafés, makers, musicians and local brands usually choose between a cheap
+      template and nothing. I make sites that feel like they came from a top international studio,
+      while staying fast, accessible and easy to update.
+    </p>
+  </Section>
+
+  <Section title="Where I am">
+    <p>
+      {SITE.location}, at the foot of the Glasshouse Mountains. I work with businesses across
+      Moreton Bay, the Sunshine Coast and Brisbane.
+    </p>
+    <a class="btn btn--primary" href={CTA.href}>
+      {CTA.label}
+    </a>
+  </Section>
+</BaseLayout>

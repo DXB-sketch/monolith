@@ -1,0 +1,147 @@
+---
+import { SITE, NAV, CTA } from '../lib/site';
+
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__lead">
+      <p class="footer__cta-line heading">Have a project in mind? I’d like to hear about it.</p>
+      <a class="btn btn--primary" href={CTA.href}>
+        {CTA.label}
+        <span class="btn__arrow" aria-hidden="true">
+          →
+        </span>
+      </a>
+    </div>
+
+    <div class="footer__grid">
+      <div class="footer__col">
+        <h2 class="label">Contact</h2>
+        <!-- [STUDIO EMAIL] becomes a mailto link once the address is supplied. -->
+        <p class="footer__value">{SITE.email}</p>
+      </div>
+
+      <div class="footer__col">
+        <h2 class="label">Location</h2>
+        <p class="footer__value">{SITE.location}</p>
+        <p class="footer__meta label">{SITE.coordinates}</p>
+      </div>
+
+      <div class="footer__col">
+        <h2 class="label">Elsewhere</h2>
+        <ul class="footer__list">
+          {SITE.socials.map((social) => (
+            <li class="footer__value">{social.label}</li>
+          ))}
+        </ul>
+      </div>
+
+      <nav class="footer__col" aria-label="Footer">
+        <h2 class="label">Site</h2>
+        <ul class="footer__list">
+          <li>
+            <a href="/">Home</a>
+          </li>
+          {NAV.map((item) => (
+            <li>
+              <a href={item.href}>{item.label}</a>
+            </li>
+          ))}
+          <li>
+            <a href={CTA.href}>Contact</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="footer__base">
+      <p class="wordmark footer__wordmark">Monolith</p>
+      <p class="label">
+        © {year} {SITE.name} · ABN {SITE.abn}
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    position: relative;
+    z-index: var(--z-content);
+    padding-block: var(--space-3xl) var(--space-xl);
+    border-top: var(--hairline);
+    background: var(--basalt);
+  }
+
+  .footer__inner {
+    display: grid;
+    gap: var(--space-2xl);
+  }
+
+  .footer__lead {
+    display: grid;
+    gap: var(--space-l);
+    justify-items: start;
+  }
+
+  .footer__cta-line {
+    max-width: 22ch;
+  }
+
+  .footer__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    gap: var(--space-xl) var(--space-l);
+    padding-top: var(--space-xl);
+    border-top: var(--hairline);
+  }
+
+  .footer__col {
+    display: grid;
+    align-content: start;
+    gap: var(--space-xs);
+  }
+
+  .footer__value {
+    color: var(--bone);
+  }
+
+  .footer__meta {
+    margin-top: calc(var(--space-3xs) * -1);
+  }
+
+  .footer__list {
+    display: grid;
+    gap: var(--space-3xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .footer__list a {
+    display: inline-block;
+    padding-block: 0.15rem;
+    text-decoration: none;
+    color: var(--ash-soft);
+  }
+
+  .footer__list a:hover {
+    color: var(--bone);
+  }
+
+  .footer__base {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-s);
+    padding-top: var(--space-l);
+    border-top: var(--hairline);
+  }
+
+  .footer__wordmark {
+    color: var(--bone);
+    font-size: var(--step--1);
+  }
+</style>

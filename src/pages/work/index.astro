@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageIntro from '../../components/PageIntro.astro';
+import FaceCard from '../../components/FaceCard.astro';
+import { PROJECTS } from '../../lib/site';
+---
+
+<BaseLayout title="Work" description="Selected websites designed and built by Monolith Web Studio.">
+  <PageIntro
+    eyebrow="Work"
+    title="Sites built"
+    accent="to stand."
+    lead="Real projects for real local organisations, plus clearly labelled concepts."
+  />
+  <section class="work-list" aria-label="Projects">
+    <ul class="container work-list__grid">
+      {PROJECTS.map((project) => (
+        <li>
+          <FaceCard project={project} level={2} />
+        </li>
+      ))}
+    </ul>
+  </section>
+</BaseLayout>
+
+<style>
+  .work-list {
+    position: relative;
+    padding-bottom: var(--space-3xl);
+  }
+
+  .work-list__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+    gap: var(--space-m);
+    margin-block: 0;
+    list-style: none;
+  }
+
+  .work-list__grid > li {
+    display: grid;
+  }
+</style>

@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageIntro from '../components/PageIntro.astro';
+import Section from '../components/Section.astro';
+import ServiceCard from '../components/ServiceCard.astro';
+import { SERVICES, PROCESS, CTA } from '../lib/site';
+---
+
+<BaseLayout
+  title="Services"
+  description="Three website packages from Monolith Web Studio, with starting prices and the process."
+>
+  <PageIntro
+    eyebrow="Services"
+    title="Three ways to"
+    accent="work together."
+    lead="Every package is designed and hand-built by me, fast and accessible from day one."
+  />
+
+  <section class="services" aria-label="Packages">
+    <ul class="container services__grid">
+      {SERVICES.map((service, index) => (
+        <li>
+          <ServiceCard service={service} index={index} />
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <Section title="Ongoing care and hosting">
+    <p>[DETAILS TO BE SUPPLIED]</p>
+  </Section>
+
+  <Section title="How it works">
+    <ol>
+      {PROCESS.map((step) => (
+        <li>
+          <strong>{step.name}</strong>: {step.text}
+        </li>
+      ))}
+    </ol>
+    <a class="btn btn--primary" href={CTA.href}>
+      {CTA.label}
+    </a>
+  </Section>
+</BaseLayout>
+
+<style>
+  .services {
+    position: relative;
+    padding-bottom: var(--space-xl);
+  }
+
+  .services__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: var(--space-s);
+    margin-block: 0;
+    list-style: none;
+  }
+</style>

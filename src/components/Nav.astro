@@ -1,0 +1,315 @@
+---
+import { NAV, CTA } from '../lib/site';
+
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const isCurrent = (href: string) => path === href || path.startsWith(`${href}/`);
+---
+
+<header class="site-header">
+  <nav class="nav" aria-label="Main" data-nav>
+    <a class="nav__brand wordmark" href="/" aria-label="Monolith Web Studio, home">
+      Monolith
+    </a>
+
+    <ul class="nav__links" id="nav-menu" data-nav-menu>
+      {NAV.map((item) => (
+        <li>
+          <a
+            class="nav__link"
+            href={item.href}
+            aria-current={isCurrent(item.href) ? 'page' : undefined}
+          >
+            {item.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <a
+      class="btn btn--primary nav__cta"
+      href={CTA.href}
+      aria-current={isCurrent(CTA.href) ? 'page' : undefined}
+    >
+      {CTA.label}
+    </a>
+
+    <button
+      class="nav__toggle"
+      type="button"
+      aria-expanded="false"
+      aria-controls="nav-menu"
+      data-nav-toggle
+    >
+      <span class="nav__toggle-icon" aria-hidden="true">
+        <span></span>
+        <span></span>
+      </span>
+      <span class="nav__toggle-label">Menu</span>
+    </button>
+  </nav>
+</header>
+
+<script>
+  // Mobile disclosure menu. Re-bound after every ClientRouter navigation because
+  // the header is swapped with each page.
+  let controller: AbortController | undefined;
+
+  function bindNav() {
+    const nav = document.querySelector<HTMLElement>('[data-nav]');
+    const toggle = nav?.querySelector<HTMLButtonElement>('[data-nav-toggle]');
+    const menu = nav?.querySelector<HTMLElement>('[data-nav-menu]');
+    if (!nav || !toggle || !menu || toggle.dataset.bound) return;
+    toggle.dataset.bound = 'true';
+    controller?.abort();
+    controller = new AbortController();
+    const { signal } = controller;
+
+    const setOpen = (open: boolean, returnFocus = false) => {
+      toggle.setAttribute('aria-expanded', String(open));
+      nav.toggleAttribute('data-open', open);
+      if (!open && returnFocus) toggle.focus();
+    };
+
+    toggle.addEventListener('click', (event) => {
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      setOpen(open);
+      // Opened from the keyboard (detail 0): the links precede the toggle in the
+      // DOM, so move focus into them rather than past them.
+      if (open && event.detail === 0) menu.querySelector('a')?.focus();
+    });
+
+    nav.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && nav.hasAttribute('data-open')) {
+        event.preventDefault();
+        setOpen(false, true);
+      }
+    });
+
+    // Close when focus or a click leaves the nav.
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (nav.hasAttribute('data-open') && !nav.contains(event.target as Node)) setOpen(false);
+      },
+      { signal },
+    );
+    nav.addEventListener('focusout', (event) => {
+      const next = event.relatedTarget as Node | null;
+      if (next && !nav.contains(next)) setOpen(false);
+    });
+    menu.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('a')) setOpen(false);
+    });
+  }
+
+  bindNav();
+  document.addEventListener('astro:page-load', bindNav);
+</script>
+
+<style>
+  .site-header {
+    position: fixed;
+    inset: var(--nav-offset) var(--gutter) auto;
+    z-index: var(--z-nav);
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .nav {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-m);
+    width: 100%;
+    max-width: 52rem;
+    min-height: var(--nav-height);
+    padding: 0.375rem 0.375rem 0.375rem var(--space-m);
+    border: var(--hairline);
+    border-radius: var(--radius-pill);
+    background: var(--frost-bg);
+    -webkit-backdrop-filter: var(--frost-blur);
+    backdrop-filter: var(--frost-blur);
+    pointer-events: auto;
+  }
+
+  .nav__brand {
+    flex: none;
+    margin-right: auto;
+    color: var(--bone);
+    font-size: 0.8125rem;
+    text-decoration: none;
+    /* keep the focus ring off the trailing letter-spacing */
+    padding-block: 0.4rem;
+  }
+
+  .nav__links {
+    display: flex;
+    gap: var(--space-3xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nav__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 0.9rem;
+    border-radius: var(--radius-pill);
+    color: var(--ash-soft);
+    font-size: var(--step--1);
+    text-decoration: none;
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+
+  .nav__link:hover,
+  .nav__link[aria-current='page'] {
+    color: var(--bone);
+  }
+
+  .nav__link[aria-current='page'] {
+    text-decoration: underline;
+    text-decoration-color: var(--lava);
+    text-underline-offset: 0.5em;
+  }
+
+  .nav__cta {
+    flex: none;
+    --btn-pad-x: 1.25em;
+  }
+
+  .nav__toggle {
+    display: none;
+  }
+
+  /* ── Mobile: collapse links into a disclosure menu ─────────────────────── */
+  @media (max-width: 51.99rem) {
+    .nav {
+      gap: var(--space-2xs);
+      padding-left: var(--space-s);
+    }
+
+    .nav__brand {
+      font-size: 0.75rem;
+    }
+
+    .nav__cta {
+      --btn-pad-x: 1em;
+      font-size: 0.8125rem;
+    }
+
+    :global(html.js) .nav__toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0 0.85rem;
+      border: var(--hairline);
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: var(--bone);
+      font-family: var(--font-mono);
+      font-size: var(--step--2);
+      letter-spacing: var(--tracking-mono);
+      text-transform: uppercase;
+    }
+
+    .nav__toggle-icon {
+      position: relative;
+      display: inline-block;
+      width: 14px;
+      height: 8px;
+    }
+
+    .nav__toggle-icon span {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: currentColor;
+      transition: transform var(--dur-base) var(--ease-out);
+    }
+
+    .nav__toggle-icon span:first-child {
+      top: 0;
+    }
+
+    .nav__toggle-icon span:last-child {
+      bottom: 0;
+    }
+
+    .nav[data-open] .nav__toggle-icon span:first-child {
+      transform: translateY(3.5px) rotate(45deg);
+    }
+
+    .nav[data-open] .nav__toggle-icon span:last-child {
+      transform: translateY(-3.5px) rotate(-45deg);
+    }
+
+    :global(html.js) .nav__links {
+      position: absolute;
+      top: calc(100% + var(--space-2xs));
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      padding: var(--space-xs);
+      border: var(--hairline);
+      border-top: var(--rule-accent);
+      border-radius: var(--radius-panel);
+      background: rgb(var(--obsidian-rgb) / 0.96);
+      -webkit-backdrop-filter: var(--frost-blur);
+      backdrop-filter: var(--frost-blur);
+      visibility: hidden;
+      opacity: 0;
+      transform: translateY(-6px);
+      transition:
+        opacity var(--dur-base) var(--ease-out),
+        transform var(--dur-base) var(--ease-out),
+        visibility 0s linear var(--dur-base);
+    }
+
+    :global(html.js) .nav[data-open] .nav__links {
+      visibility: visible;
+      opacity: 1;
+      transform: none;
+      transition:
+        opacity var(--dur-base) var(--ease-out),
+        transform var(--dur-base) var(--ease-out);
+    }
+
+    :global(html.js) .nav__link {
+      width: 100%;
+      font-size: var(--step-1);
+      padding-inline: var(--space-s);
+      border-radius: var(--radius-panel);
+    }
+
+    /* No JavaScript: keep the links visible, wrapped under the pill row. */
+    :global(html:not(.js)) .nav {
+      flex-wrap: wrap;
+      border-radius: 1.5rem;
+    }
+
+    :global(html:not(.js)) .nav__links {
+      order: 3;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    :global(html:not(.js)) .nav__link {
+      padding-inline: 0.6rem;
+    }
+  }
+
+  @media (max-width: 22rem) {
+    .nav__toggle-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+  }
+</style>

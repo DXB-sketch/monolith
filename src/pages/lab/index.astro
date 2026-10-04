@@ -1,0 +1,28 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageIntro from '../../components/PageIntro.astro';
+import Section from '../../components/Section.astro';
+import { LAB } from '../../lib/site';
+---
+
+<BaseLayout
+  title="Lab"
+  description="Experiments from Monolith Web Studio: shaders, motion studies and interaction ideas."
+>
+  <PageIntro
+    eyebrow="Lab"
+    title="Experiments in"
+    accent="light and stone."
+    lead="Where I test ideas before they reach a client’s site."
+  />
+
+  <Section title="Experiments">
+    <ul>
+      {LAB.map((entry) => (
+        <li>
+          <a href={`/lab/${entry.slug}`}>{entry.title}</a>
+        </li>
+      ))}
+    </ul>
+  </Section>
+</BaseLayout>

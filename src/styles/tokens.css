@@ -1,0 +1,121 @@
+/*
+ * Design tokens — the single source of truth for colour, type, space and motion.
+ * Every colour used anywhere on the site is defined here. Components reference
+ * these custom properties; shaders read the mirrored values in src/scene/palette.ts.
+ * If you change a colour here, change it in palette.ts too.
+ */
+
+:root {
+  /* ── Palette (ART_DIRECTION.md) ─────────────────────────────────────── */
+  --basalt: #0b0909;
+  --obsidian: #141010;
+  --obsidian-edge: #2a1e1b;
+  --magma: #3a170f;
+  --lava: #ff5a1f;
+  --lava-hot: #ffb070;
+  --ember: #8e3214;
+  --ash: #b5aaa0;
+  --ash-soft: #cfc4b8;
+  --bone: #efe8e0;
+
+  /* Channel triplets for translucent mixes: rgb(var(--obsidian-rgb) / 0.6) */
+  --basalt-rgb: 11 9 9;
+  --obsidian-rgb: 20 16 16;
+  --obsidian-edge-rgb: 42 30 27;
+  --lava-rgb: 255 90 31;
+  --bone-rgb: 239 232 224;
+
+  /* ── Semantic aliases ───────────────────────────────────────────────── */
+  --color-bg: var(--basalt);
+  --color-surface: var(--obsidian);
+  --color-line: var(--obsidian-edge);
+  --color-text: var(--bone);
+  --color-text-body: var(--ash-soft);
+  --color-text-muted: var(--ash);
+  --color-accent: var(--lava);
+  --color-on-accent: var(--basalt);
+  --color-focus: var(--lava);
+
+  /* ── Type families ──────────────────────────────────────────────────── */
+  --font-sans:
+    'Sora', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --weight-display: 200;
+  --weight-body: 300;
+  --weight-strong: 500;
+  --weight-mono: 400;
+  --weight-mono-strong: 500;
+
+  /* ── Fluid type scale (min at 360px, max at 1440px) ─────────────────── */
+  --step--2: clamp(0.6875rem, 0.66rem + 0.1vw, 0.75rem); /* 11–12  mono labels */
+  --step--1: clamp(0.8125rem, 0.79rem + 0.12vw, 0.875rem); /* 13–14 */
+  --step-0: clamp(1rem, 0.96rem + 0.19vw, 1.125rem); /* 16–18  body */
+  --step-1: clamp(1.1875rem, 1.1rem + 0.37vw, 1.4375rem); /* 19–23  lead */
+  --step-2: clamp(1.5rem, 1.33rem + 0.74vw, 2rem); /* 24–32  h3 */
+  --step-3: clamp(1.875rem, 1.54rem + 1.48vw, 2.875rem); /* 30–46  h2 */
+  --step-4: clamp(2.5rem, 1.83rem + 2.96vw, 4.5rem); /* 40–72  section display */
+  --step-5: clamp(2.75rem, 1.5rem + 5.6vw, 6.5rem); /* 44–104 hero display */
+
+  --leading-tight: 1.02;
+  --leading-snug: 1.2;
+  --leading-body: 1.6;
+  --tracking-display: -0.035em;
+  --tracking-heading: -0.02em;
+  --tracking-mono: 0.14em;
+  --tracking-wordmark: 0.42em;
+
+  /* ── Space (4px base, fluid at the top end) ─────────────────────────── */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-s: 1rem;
+  --space-m: 1.5rem;
+  --space-l: 2rem;
+  --space-xl: clamp(2.5rem, 2rem + 2vw, 3.5rem);
+  --space-2xl: clamp(3.5rem, 2.5rem + 4vw, 6rem);
+  --space-3xl: clamp(5rem, 3rem + 8vw, 10rem);
+  --space-section: clamp(6rem, 3rem + 12vw, 14rem);
+
+  --gutter: clamp(1rem, 0.5rem + 2.5vw, 2.5rem);
+  --measure: 62ch;
+  --content-max: 76rem;
+  --nav-height: 3.5rem;
+  --nav-offset: 1rem;
+
+  /* ── Radii ──────────────────────────────────────────────────────────── */
+  --radius-none: 0;
+  --radius-panel: 2px;
+  --radius-pill: 999px;
+
+  /* ── Lines and surfaces ─────────────────────────────────────────────── */
+  --hairline: 1px solid var(--obsidian-edge);
+  --rule-accent: 1px solid var(--lava);
+  --panel-bg: linear-gradient(
+    180deg,
+    rgb(var(--obsidian-rgb) / 0.92) 0%,
+    rgb(var(--basalt-rgb) / 0.88) 100%
+  );
+  --frost-bg: rgb(var(--obsidian-rgb) / 0.62);
+  --frost-blur: blur(14px) saturate(1.2);
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  /* power3.out and expo.out equivalents, matching GSAP's eases */
+  --ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 160ms;
+  --dur-base: 320ms;
+  --dur-slow: 700ms;
+  --dur-fade: 1200ms;
+
+  /* ── Layers ─────────────────────────────────────────────────────────── */
+  --z-scene: 0;
+  --z-content: 1;
+  --z-hud: 20;
+  --z-nav: 30;
+  --z-menu: 40;
+  --z-skip: 50;
+}
