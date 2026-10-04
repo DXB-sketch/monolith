@@ -98,7 +98,7 @@
     rgb(var(--obsidian-rgb) / 0.92) 0%,
     rgb(var(--basalt-rgb) / 0.88) 100%
   );
-  --frost-bg: rgb(var(--obsidian-rgb) / 0.62);
+  --frost-bg: rgb(var(--obsidian-rgb) / 0.78);
   --frost-blur: blur(14px) saturate(1.2);
 
   /* ── Motion ─────────────────────────────────────────────────────────── */

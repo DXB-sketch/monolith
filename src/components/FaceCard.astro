@@ -5,9 +5,11 @@ interface Props {
   project: Project;
   /** Heading level for the project title inside the page outline. */
   level?: 2 | 3;
+  /** This title is a home chapter's heading: chapter links move focus to it. */
+  chapterHeading?: boolean;
 }
 
-const { project, level = 3 } = Astro.props;
+const { project, level = 3, chapterHeading = false } = Astro.props;
 const Heading = `h${level}` as 'h2' | 'h3';
 const titleId = `project-${project.slug}`;
 ---
@@ -18,7 +20,12 @@ const titleId = `project-${project.slug}`;
     {project.concept && <p class="face-card__badge label">Concept</p>}
   </div>
 
-  <Heading id={titleId} class="face-card__title">
+  <Heading
+    id={titleId}
+    class="face-card__title"
+    data-chapter-heading={chapterHeading ? '' : undefined}
+    tabindex={chapterHeading ? -1 : undefined}
+  >
     {project.title}
   </Heading>
   <p class="face-card__client">{project.client}</p>
