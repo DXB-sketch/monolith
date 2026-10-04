@@ -5,6 +5,8 @@
  *
  *   /dev/scene?tier=high|medium   live scene, no UI
  *   /dev/scene?capture=12         frozen at t = 12s, drawing buffer preserved
+ *   &progress=0.36                story progress (default story map), with capture
+ *   &hide=lava,embers&nopost      isolate objects, skip post-processing
  */
 import '../../styles/global.css';
 
@@ -37,7 +39,9 @@ export function getStaticPaths() {
         tier,
         debugHide: params.get('hide')?.split(','),
         debugNoPost: params.has('nopost'),
-        capture: captureAt ? { time: Number(captureAt) } : undefined,
+        capture: captureAt
+          ? { time: Number(captureAt), progress: Number(params.get('progress') ?? 0) }
+          : undefined,
         onFirstFrame: () => {
           // Give the frozen frame a few extra renders so pointer heat settles.
           setTimeout(() => (w.__sceneReady = true), captureAt ? 1500 : 0);

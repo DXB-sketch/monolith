@@ -20,8 +20,13 @@ html {
   scroll-padding-top: calc(var(--nav-height) + var(--nav-offset) * 2);
 }
 
+/*
+ * Native smooth scrolling only without JS. With JS, the home story handles
+ * in-page links itself, and a smooth jump to a #fragment on load would be
+ * interrupted by ScrollTrigger's first measurement, leaving the page at the top.
+ */
 @media (prefers-reduced-motion: no-preference) {
-  html {
+  html:not(.js) {
     scroll-behavior: smooth;
   }
 }

@@ -8,6 +8,7 @@ import {
   Box3,
   type BufferAttribute,
 } from 'three';
+import { CORE_POINT_LOCAL, MONOLITH, MONOLITH_ROTATION } from './dimensions';
 import { createNoise2, smoothstep } from './noise';
 import type { TierSettings } from './quality';
 import type { SceneModule, SceneState } from './types';
@@ -15,14 +16,7 @@ import { FRAGMENT_PRELUDE, type SharedUniforms } from './uniforms';
 import vertexShader from './shaders/monolith.vert?raw';
 import fragmentShader from './shaders/monolith.frag?raw';
 
-/** Proportions from SCENE_SPEC: width : height : depth = 1 : 3.2 : 0.5. */
-export const MONOLITH = {
-  width: 5,
-  height: 16,
-  depth: 2.5,
-  /** Sunk slightly into the ground so it reads as planted, not placed. */
-  sink: 0.35,
-} as const;
+export { MONOLITH } from './dimensions';
 
 export const LAVA_LIGHT_COUNT = 6;
 
@@ -99,6 +93,8 @@ export function createMonolith(shared: SharedUniforms, tier: TierSettings): Mono
     uPointerRadius: { value: 3.2 },
     uFissureGain: { value: 1 },
     uHeight: { value: MONOLITH.height },
+    uCorePoint: { value: CORE_POINT_LOCAL.clone() },
+    uCoreOpen: { value: 0 },
     uLavaLights: { value: lavaLights },
   };
 
@@ -115,8 +111,7 @@ export function createMonolith(shared: SharedUniforms, tier: TierSettings): Mono
   const mesh = new Mesh(geometry, material);
   mesh.name = 'monolith';
   mesh.position.y = -MONOLITH.sink;
-  // A lean of about 1.5 degrees, so it feels found rather than placed.
-  mesh.rotation.set(0.014, 0.06, -0.022, 'YXZ');
+  mesh.rotation.copy(MONOLITH_ROTATION);
   mesh.updateMatrixWorld(true);
 
   return {
@@ -130,6 +125,8 @@ export function createMonolith(shared: SharedUniforms, tier: TierSettings): Mono
       uniforms.uFaceHeat.value.copy(state.faceHeat);
       uniforms.uPointer.value.copy(state.pointerPoint);
       uniforms.uPointerHeat.value = state.pointerHeat;
+      uniforms.uFissureGain.value = state.fissureGain;
+      uniforms.uCoreOpen.value = state.coreOpen;
     },
     dispose() {
       geometry.dispose();

@@ -15,83 +15,92 @@ const [seqdvgc, allen, concept] = PROJECTS as [
 <BaseLayout>
   <Hud />
 
-  <!-- 00 — Arrival -->
-  <section id="arrival" class="hero" aria-labelledby="hero-title" data-scene-anchor>
-    <div class="container hero__inner">
-      <div class="hero__copy">
-        <p class="label hero__eyebrow">
-          <span class="chapter-num">00</span> Monolith Web Studio · {SITE.location}
-        </p>
-        <h1 id="hero-title" class="display hero__title">
-          <span class="hero__line">Forged in fire.</span>
-          <span class="hero__line">
-            <em>Built to stand.</em>
-          </span>
-        </h1>
-        <p class="lead hero__intro">
-          I design and build websites for businesses across South East Queensland. Award-level craft
-          that stays fast, accessible and easy to update. One person, start to finish.
-        </p>
-        <div class="hero__actions">
-          <a class="btn btn--primary" href={CTA.href}>
-            {CTA.label}
-            <span class="btn__arrow" aria-hidden="true">
-              →
+  <!--
+    The scroll story: Chapters 00–04 in one container. The scene renders while
+    any of it is on screen (data-scene-anchor) and rests at the plain section.
+    src/lib/story.ts measures [data-story-anchor] blocks to place each chapter.
+  -->
+  <div class="story" data-story data-scene-anchor>
+    <!-- 00 — Arrival -->
+    <section id="arrival" class="hero" aria-labelledby="hero-title">
+      <div class="container hero__inner">
+        <div class="hero__copy">
+          <p class="label hero__eyebrow">
+            <span class="chapter-num">00</span> Monolith Web Studio · {SITE.location}
+          </p>
+          <h1 id="hero-title" class="display hero__title" data-chapter-heading tabindex="-1">
+            <span class="hero__line">Forged in fire.</span>
+            <span class="hero__line">
+              <em>Built to stand.</em>
             </span>
-          </a>
-          <a class="btn btn--ghost" href="#face-i">
-            Skip to the work
-            <span class="btn__arrow" aria-hidden="true">
-              ↓
-            </span>
-          </a>
+          </h1>
+          <p class="lead hero__intro">
+            I design and build websites for businesses across South East Queensland. Award-level
+            craft that stays fast, accessible and easy to update. One person, start to finish.
+          </p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href={CTA.href}>
+              {CTA.label}
+              <span class="btn__arrow" aria-hidden="true">
+                →
+              </span>
+            </a>
+            <a class="btn btn--ghost" href="#face-i">
+              Skip to the work
+              <span class="btn__arrow" aria-hidden="true">
+                ↓
+              </span>
+            </a>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <div class="story">
-    <!-- 01 — Face I -->
-    <section id="face-i" class="chapter" aria-labelledby="face-i-title">
-      <div class="container chapter__inner">
-        <p class="label chapter__eyebrow">
+    <!-- 01 — Face I: the left face. Copy left, stone right. -->
+    <section id="face-i" class="chapter chapter--left" aria-labelledby={`project-${seqdvgc.slug}`}>
+      <div class="container chapter__inner" data-story-anchor="1">
+        <p class="label chapter__eyebrow" data-reveal>
           <span class="chapter-num">01</span> Face I · Selected work
         </p>
-        <h2 id="face-i-title" class="visually-hidden">
-          Selected work: {seqdvgc.title}
-        </h2>
-        <FaceCard project={seqdvgc} />
+        <div class="chapter__block" data-reveal>
+          <FaceCard project={seqdvgc} level={2} chapterHeading />
+        </div>
       </div>
     </section>
 
-    <!-- 02 — Face II -->
-    <section id="face-ii" class="chapter chapter--alt" aria-labelledby="face-ii-title">
-      <div class="container chapter__inner">
-        <p class="label chapter__eyebrow">
+    <!-- 02 — Face II: the back face. Copy right, stone left. -->
+    <section id="face-ii" class="chapter chapter--right" aria-labelledby={`project-${allen.slug}`}>
+      <div class="container chapter__inner" data-story-anchor="2">
+        <p class="label chapter__eyebrow" data-reveal>
           <span class="chapter-num">02</span> Face II · Selected work
         </p>
-        <h2 id="face-ii-title" class="visually-hidden">
-          Selected work: {allen.title}
-        </h2>
-        <FaceCard project={allen} />
+        <div class="chapter__block" data-reveal>
+          <FaceCard project={allen} level={2} chapterHeading />
+        </div>
       </div>
     </section>
 
-    <!-- 03 — The Lab -->
-    <section id="the-lab" class="chapter" aria-labelledby="the-lab-title">
-      <div class="container chapter__inner chapter__inner--split">
-        <div class="chapter__copy">
-          <p class="label chapter__eyebrow">
-            <span class="chapter-num">03</span> The Lab
-          </p>
-          <h2 id="the-lab-title" class="display-2">
+    <!-- 03 — The Lab: the right face. Copy left, stone right. -->
+    <section id="the-lab" class="chapter chapter--left" aria-labelledby="the-lab-title">
+      <div class="container chapter__inner" data-story-anchor="3">
+        <p class="label chapter__eyebrow" data-reveal>
+          <span class="chapter-num">03</span> The Lab
+        </p>
+        <div class="chapter__panel">
+          <h2
+            id="the-lab-title"
+            class="display-2"
+            data-chapter-heading
+            tabindex="-1"
+            data-reveal="lines"
+          >
             Experiments in <em>light and stone.</em>
           </h2>
-          <p class="lead">
+          <p class="lead" data-reveal>
             The Lab is where I test ideas before they reach a client’s site: shaders, motion studies
             and interaction experiments.
           </p>
-          <ul class="lab-list">
+          <ul class="lab-list" data-reveal>
             {LAB.map((entry) => (
               <li>
                 <a class="lab-list__link" href={`/lab/${entry.slug}`}>
@@ -101,51 +110,73 @@ const [seqdvgc, allen, concept] = PROJECTS as [
               </li>
             ))}
           </ul>
-          <a class="btn btn--ghost" href="/lab">
+          <a class="btn btn--ghost" href="/lab" data-reveal>
             Visit the Lab
             <span class="btn__arrow" aria-hidden="true">
               →
             </span>
           </a>
         </div>
-        <FaceCard project={concept} />
+        <div class="chapter__block" data-reveal>
+          <FaceCard project={concept} />
+        </div>
       </div>
     </section>
 
-    <!-- 04 — The Core -->
-    <section id="the-core" class="chapter chapter--core" aria-labelledby="the-core-title">
-      <div class="container chapter__inner">
-        <p class="label chapter__eyebrow">
+    <!--
+      04 — The Core: the front face. The services summary is read first (copy
+      right, stone left). Then the camera dives into the core fissure: the
+      screen washes to molten light in the empty stretch between the blocks,
+      and the closing CTA only enters once the wash has cooled to magma.
+    -->
+    <section
+      id="the-core"
+      class="chapter chapter--right chapter--core"
+      aria-labelledby="the-core-title"
+    >
+      <div class="container chapter__inner" data-story-anchor="4">
+        <p class="label chapter__eyebrow" data-reveal>
           <span class="chapter-num">04</span> The Core
         </p>
-        <h2 id="the-core-title" class="heading core__title">
-          Three ways to work together. Every one is hand-built by me.
-        </h2>
-        <ul class="core__services">
-          {SERVICES.map((service, index) => (
-            <li>
-              <ServiceCard service={service} index={index} />
-            </li>
-          ))}
-        </ul>
-        <div class="core__cta">
-          <p class="display-2 core__cta-title">
-            Let’s make something <em>that stands.</em>
-          </p>
-          <div class="hero__actions">
-            <a class="btn btn--primary" href={CTA.href}>
-              {CTA.label}
-              <span class="btn__arrow" aria-hidden="true">
-                →
-              </span>
-            </a>
-            <a class="btn btn--ghost" href="/services">
-              Services and pricing
-              <span class="btn__arrow" aria-hidden="true">
-                →
-              </span>
-            </a>
-          </div>
+        <div class="chapter__panel core__lead">
+          <h2
+            id="the-core-title"
+            class="heading core__title"
+            data-chapter-heading
+            tabindex="-1"
+            data-reveal="lines"
+          >
+            Three ways to work together. Every one is hand-built by me.
+          </h2>
+          <ul class="core__services">
+            {SERVICES.map((service, index) => (
+              <li data-reveal>
+                <ServiceCard service={service} index={index} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div class="core__dive" aria-hidden="true"></div>
+
+      <div class="container core__cta" data-story-cta>
+        <h3 class="display-2 core__cta-title" data-reveal="lines">
+          Let’s make something <em>that stands.</em>
+        </h3>
+        <div class="hero__actions" data-reveal>
+          <a class="btn btn--primary" href={CTA.href}>
+            {CTA.label}
+            <span class="btn__arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+          <a class="btn btn--ghost" href="/services">
+            Services and pricing
+            <span class="btn__arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
         </div>
       </div>
     </section>
@@ -301,13 +332,15 @@ const [seqdvgc, allen, concept] = PROJECTS as [
     }
   }
 
-  /* ── Chapters (stacked plainly until the Phase 2 scroll story) ─────────── */
+  /* ── Chapters 01–04 ──────────────────────────────────────────────────── */
   .story {
     position: relative;
   }
 
   .chapter {
     position: relative;
+    display: grid;
+    align-content: center;
     padding-block: var(--space-section);
   }
 
@@ -315,31 +348,72 @@ const [seqdvgc, allen, concept] = PROJECTS as [
     display: grid;
     gap: var(--space-l);
     justify-items: start;
+    align-content: start;
   }
 
-  .chapter--alt .chapter__inner {
-    justify-items: end;
+  .chapter__block,
+  .chapter__panel {
+    width: 100%;
+    max-width: 40rem;
   }
 
-  .chapter--alt .chapter__eyebrow {
-    justify-self: end;
-  }
-
-  .chapter__inner--split {
-    gap: var(--space-2xl);
-  }
-
-  @media (min-width: 64rem) {
-    .chapter__inner--split {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      align-items: end;
-    }
-  }
-
-  .chapter__copy {
+  /* Copy over the scene sits on an obsidian panel, so its contrast never depends on the frame. */
+  .chapter__panel {
     display: grid;
     gap: var(--space-m);
     justify-items: start;
+    padding: var(--space-xl) var(--space-l) var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+  }
+
+  /* Small labels over the scene: bone on a basalt backing, so lava behind never washes them out. */
+  .chapter__eyebrow {
+    padding: 0.35em 0.75em;
+    border-radius: var(--radius-panel);
+    background: rgb(var(--basalt-rgb) / 0.82);
+    color: var(--bone);
+  }
+
+  /* Desktop: copy on the side opposite the face in view. */
+  @media (min-width: 64rem) {
+    .chapter--right .chapter__inner {
+      justify-items: end;
+    }
+
+    .chapter__block,
+    .chapter__panel {
+      max-width: min(40rem, 46vw);
+    }
+  }
+
+  /*
+   * With JS and motion, chapters are tall so the camera has room to travel, and
+   * the Core leaves a stretch for the dive. Without JS, or with reduced motion,
+   * the story stays compact: no empty scrolling past a static image.
+   * lvh units: the mobile address bar showing or hiding never changes these.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html.js) .chapter {
+      min-height: 150lvh;
+      padding-block: var(--space-2xl);
+    }
+
+    :global(html.js) .chapter--core {
+      display: block;
+      min-height: 0;
+      padding-block: 25lvh 0;
+    }
+
+    :global(html.js) .core__dive {
+      height: 120lvh;
+    }
+
+    :global(html.js) .core__cta {
+      padding-bottom: 30lvh;
+    }
   }
 
   .lab-list {
@@ -381,7 +455,6 @@ const [seqdvgc, allen, concept] = PROJECTS as [
 
   .core__services {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
     gap: var(--space-s);
     width: 100%;
     margin: 0;

@@ -2,8 +2,9 @@
 /**
  * Instrument-style HUD over the scene. Readouts top left, chapter index top right.
  * The chapter index is real navigation: each item links to its home section.
- * Live chapter tracking arrives with the scroll story in Phase 2; for now the
- * first chapter is marked as the starting point.
+ * src/lib/story.ts tracks the active chapter (aria-current) and moves focus to
+ * the chapter heading on click. The core temperature is decorative: it rises
+ * through the story but is deliberately not a live region.
  */
 import { CHAPTERS, SITE } from '../lib/site';
 ---
@@ -12,7 +13,10 @@ import { CHAPTERS, SITE } from '../lib/site';
   <aside class="hud__readouts" aria-label="Scene readout">
     <p class="label">{SITE.coordinates}</p>
     <p class="label">
-      Core temp <span class="hud__value">1,160°C</span>
+      Core temp{' '}
+      <span class="hud__value" data-core-temp>
+        1,160°C
+      </span>
     </p>
     <p class="label hud__live">
       <span class="hud__dot" aria-hidden="true"></span>Live
@@ -28,6 +32,7 @@ import { CHAPTERS, SITE } from '../lib/site';
             href={`#${chapter.id}`}
             data-chapter-link={chapter.id}
             data-active={i === 0 ? '' : undefined}
+            aria-current={i === 0 ? 'true' : undefined}
           >
             <span class="hud__num">{chapter.index}</span>
             <span class="hud__name">{chapter.label}</span>
@@ -68,7 +73,8 @@ import { CHAPTERS, SITE } from '../lib/site';
         visibility 0s linear 0s;
     }
 
-    .hud[data-hidden] {
+    .hud[data-hidden],
+    .hud[data-washed] {
       opacity: 0;
       visibility: hidden;
       transition:

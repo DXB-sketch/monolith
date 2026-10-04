@@ -79,6 +79,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <script>
       import { initSceneBoot } from '../lib/scene-boot';
       initSceneBoot();
+
+      // Dev overlay for real-device testing. Only fetched when ?fps is in the URL.
+      if (new URLSearchParams(location.search).has('fps')) {
+        import('../lib/fps-overlay').then((m) => m.mountFpsOverlay());
+      }
     </script>
   </body>
 </html>
