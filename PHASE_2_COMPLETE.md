@@ -170,6 +170,18 @@ All measurements were taken in this container, which has **no GPU** (WebGL runs 
 | 2 | 99 | 100 | 100 | 100 | 1.5 s | 2.1 s | 20 ms | 0 |
 | 3 | 100 | 100 | 100 | 100 | 1.4 s | 1.7 s | 60 ms | 0 |
 
+**Vercel deploy preview** (`dpl_9ATKwa832naHysvkdn4Ut8nihEER`, commit `438b262`): the build succeeded. Lighthouse mobile ran three times from this container through a temporary share link (one auth redirect, and the container's network proxy):
+
+| Run | Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 94 | 100 | 100 | 63* | 2.2 s | 2.5 s | 30 ms | 0 |
+| 2 | 96 | 100 | 100 | 63* | 2.0 s | 2.4 s | 20 ms | 0 |
+| 3 | 92 | 100 | 100 | 63* | 2.3 s | 2.7 s | 30 ms | 0 |
+
+\* SEO's only failing audit is `is-crawlable`: Vercel adds `X-Robots-Tag: noindex` to every preview. Production doesn't get it, and the local build scores SEO 100.
+
+**LCP is at or over the 2.5 s budget in two of the three preview runs** (Phase 1's preview measured 2.1–2.4 s the same way). The local runs, with no redirect or proxy, are 1.7–2.1 s. Initial JS is essentially unchanged (+0.4 KB), and the story chunk loads after first paint, so the difference is most likely network variance through the share redirect and proxy. It still needs re-measuring on the production domain, where neither applies.
+
 **Bundle sizes** (gzip -9):
 
 | Chunk | Size | Loaded |
@@ -235,7 +247,7 @@ The core vein adds about 5–10% fragment cost. Medium remains about 2.3× cheap
 
 - **Real-device testing is still outstanding:** fps per tier (use `?fps`, or `?tier=high&fps` to pin a tier), and the *feel* of the Lenis and camera damping, which can't be judged at SwiftShader's 1–7 fps.
 - **Address-bar resizing is untested on a real phone.** `lvh` heights and `ignoreMobileResize` are in place, but iOS and Android still need a check.
-- **Deploy preview:** results are recorded in the PR once it builds. Previews are behind Vercel deployment protection.
+- **Deploy preview LCP is at or over 2.5 s in two of three runs** (see Performance), very likely the share-link redirect plus the proxy. Re-measure on the production domain after merge. Previews are behind Vercel deployment protection.
 - **Tall blocks:** the Lab and Core content blocks are taller than a 900px viewport. Their anchors align the block's top at 20% of the viewport, so the heading is in view when the camera arrives, and the rest scrolls past normally.
 - **HUD overlap:** the fixed HUD can briefly overlap content panels as they scroll past on desktop. It has no backing, by design (instrument readout).
 - **Safari:** browsers without WebGPU (Safari before 26, Firefox on most platforms) still decide the tier with the WebGL probe after first paint.
