@@ -28,7 +28,8 @@ import {
   ToneMappingMode,
   VignetteEffect,
 } from 'postprocessing';
-import { framingFor, idleOffset } from './camera-path';
+import { cameraAt, createPose, idleOffset } from './camera-path';
+import { blendChapterState, createChapterState } from './chapters';
 import { createChannel } from './channel';
 import { createEmbers } from './embers';
 import { createLava } from './lava';
@@ -36,11 +37,14 @@ import { createMonolith, LAVA_LIGHT_COUNT, MONOLITH } from './monolith';
 import { PALETTE_HEX } from './palette';
 import { DOWNGRADE_FRAME_MS, TIER_SETTINGS, type QualityTier, type SceneTier } from './quality';
 import { createSky } from './sky';
+import { DEFAULT_STORY_MAP, storyPosition, type StoryMap, type StoryPosition } from './story-map';
 import { createTerrain, terrainHeight } from './terrain';
 import type { SceneModule, SceneState } from './types';
 import { createSharedUniforms } from './uniforms';
+import { WashEffect } from './wash';
 
 export type { QualityTier, SceneTier } from './quality';
+export type { StoryMap } from './story-map';
 
 export interface SceneOptions {
   tier: SceneTier;
@@ -48,8 +52,10 @@ export interface SceneOptions {
   onFirstFrame?: () => void;
   /** Called when the scene drops a tier after the 3-second check, or loses its context. */
   onTierChange?: (tier: QualityTier) => void;
-  /** Poster capture: freeze time at this value and keep the drawing buffer. */
-  capture?: { time: number };
+  /** Poster capture: freeze time (and optionally story progress) and keep the drawing buffer. */
+  capture?: { time: number; progress?: number };
+  /** Skip the 3-second frame-time check (a tier forced with ?tier= is never second-guessed). */
+  fixedTier?: boolean;
   /** Dev only: object names to hide (sky, terrain, lava, monolith, embers). */
   debugHide?: string[];
   /** Dev only: render without post-processing. */
@@ -57,9 +63,14 @@ export interface SceneOptions {
 }
 
 export interface SceneHandle {
-  /** 0..1 scroll progress through the home story. Stub until Phase 2. */
-  setProgress(p: number): void;
-  /** Jump to a chapter's framing, for non-home pages and direct links. Stub until Phase 2. */
+  /**
+   * 0..1 scroll progress through the home story. The camera follows with light
+   * damping; `immediate` jumps straight there (deep links, back navigation).
+   */
+  setProgress(p: number, immediate?: boolean): void;
+  /** Where each chapter sits in progress space, measured from the real layout. */
+  setStoryMap(map: StoryMap): void;
+  /** Jump to a chapter's framing, for non-home pages. */
   setChapter(index: number): void;
   /** Pointer position, normalised -1..1 (y up). */
   setPointer(x: number, y: number): void;
@@ -68,8 +79,14 @@ export interface SceneHandle {
   dispose(): void;
 }
 
-/** Ember density and lava brightness for Chapter 00. Phase 2 varies these per chapter. */
-const ARRIVAL = { emberDensity: 0.55, lavaIntensity: 1 } as const;
+/**
+ * Exponential smoothing on the camera's progress, per second. Lenis already
+ * smooths the scroll, so this only adds a little weight; more would feel laggy.
+ */
+const PROGRESS_DAMPING = 7;
+/** Base bloom and grain; both change through the Chapter 04 dive. */
+const BLOOM_INTENSITY = 1.25;
+const GRAIN_OPACITY = 0.1;
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
@@ -139,10 +156,12 @@ export async function createScene(
   });
   const vignette = new VignetteEffect({ offset: 0.3, darkness: 0.62 });
   const toneMapping = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
+  const wash = new WashEffect();
   const grain = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
   // Grain is per-pixel noise: leave it out of poster captures, where it would only cost bytes.
-  grain.blendMode.opacity.value = capture ? 0 : 0.1;
-  composer.addPass(new EffectPass(camera, bloom, vignette, toneMapping, grain));
+  const grainOpacity = capture ? 0 : GRAIN_OPACITY;
+  grain.blendMode.opacity.value = grainOpacity;
+  composer.addPass(new EffectPass(camera, bloom, vignette, toneMapping, wash, grain));
 
   // ── State ──────────────────────────────────────────────────────────────
   const state: SceneState = {
@@ -151,14 +170,21 @@ export async function createScene(
     faceHeat: new Vector4(0, 0, 0, 0),
     pointerPoint: new Vector3(0, -100, 0),
     pointerHeat: 0,
-    emberDensity: ARRIVAL.emberDensity,
-    lavaIntensity: ARRIVAL.lavaIntensity,
+    emberDensity: 0,
+    lavaIntensity: 1,
+    fissureGain: 1,
+    coreOpen: 0,
   };
-  let chapter = 0;
-  let progress = 0;
+  const chapterState = createChapterState();
+  let storyMap: StoryMap = DEFAULT_STORY_MAP;
+  /** Where the scroll is, and where the camera is (damped toward it). */
+  let targetProgress = capture?.progress ?? 0;
+  let cameraProgress = targetProgress;
+  const position: StoryPosition = { chapter: 0, dive: 0 };
+  const pose = createPose();
 
   // ── Sizing ─────────────────────────────────────────────────────────────
-  const framing = framingFor(0, 16 / 9);
+  let drawingHeight = 1;
   const resize = () => {
     const width = Math.max(1, canvas.clientWidth);
     const height = Math.max(1, canvas.clientHeight);
@@ -166,10 +192,8 @@ export async function createScene(
     renderer.setPixelRatio(dpr);
     composer.setSize(width, height, false);
     camera.aspect = width / height;
-    framingFor(chapter, camera.aspect, framing);
-    camera.fov = framing.fov;
+    drawingHeight = height * dpr;
     camera.updateProjectionMatrix();
-    embers.setPointScale((height * dpr) / (2 * Math.tan(MathUtils.degToRad(camera.fov) / 2)));
   };
   resize();
   const resizeObserver = new ResizeObserver(resize);
@@ -231,7 +255,7 @@ export async function createScene(
   let runningTime = 0;
   let sampledFrames = 0;
   let sampledTime = 0;
-  let evaluated = Boolean(capture);
+  let evaluated = Boolean(capture) || Boolean(options.fixedTier);
 
   const evaluate = () => {
     evaluated = true;
@@ -250,16 +274,69 @@ export async function createScene(
     }
   };
 
+  const palette = shared;
+  const applyWash = (dive: number) => {
+    // Rises to molten light at the peak (0.5), cools through lava and magma by
+    // 0.75 (the CTA may appear from here), and reaches basalt at 1.
+    if (dive <= 0) {
+      wash.amount = 0;
+      return;
+    }
+    const color = wash.color;
+    if (dive < 0.5) {
+      wash.amount = MathUtils.smoothstep(dive, 0.22, 0.5);
+      color.copy(palette.uLavaHot.value);
+    } else if (dive < 0.75) {
+      wash.amount = 1;
+      const t = (dive - 0.5) / 0.25;
+      if (t < 0.5) color.lerpColors(palette.uLavaHot.value, palette.uLava.value, t * 2);
+      else color.lerpColors(palette.uLava.value, palette.uMagma.value, (t - 0.5) * 2);
+    } else {
+      wash.amount = 1;
+      color.lerpColors(
+        palette.uMagma.value,
+        palette.uBasalt.value,
+        MathUtils.smoothstep(dive, 0.75, 1),
+      );
+    }
+  };
+
   const render = (dt: number) => {
     if (!capture) state.time += dt;
     state.delta = dt;
     shared.uTime.value = state.time;
 
-    framingFor(chapter, camera.aspect, framing);
-    idleOffset(state.time, drift);
-    camera.position.copy(framing.position).add(drift);
-    camera.lookAt(framing.target);
+    // Story position: damped camera progress mapped through the measured chapters.
+    cameraProgress += (targetProgress - cameraProgress) * (1 - Math.exp(-dt * PROGRESS_DAMPING));
+    if (Math.abs(targetProgress - cameraProgress) < 1e-5) cameraProgress = targetProgress;
+    storyPosition(cameraProgress, storyMap, position);
+
+    cameraAt(position, camera.aspect, pose);
+    // Idle drift breathes during the orbit and fades out as the camera nears the stone.
+    idleOffset(state.time, drift).multiplyScalar(1 - pose.dive);
+    camera.position.copy(pose.position).add(drift);
+    camera.lookAt(pose.target);
+    const near = MathUtils.clamp(pose.clearance * 0.4, 0.03, 0.5);
+    if (camera.fov !== pose.fov || camera.near !== near) {
+      camera.fov = pose.fov;
+      camera.near = near;
+      camera.updateProjectionMatrix();
+    }
     camera.updateMatrixWorld();
+    embers.setPointScale(drawingHeight / (2 * Math.tan(MathUtils.degToRad(camera.fov) / 2)));
+
+    // Per-chapter scene state.
+    blendChapterState(position, chapterState);
+    state.faceHeat.fromArray(chapterState.faceHeat);
+    state.emberDensity = chapterState.emberDensity;
+    state.lavaIntensity = chapterState.lavaIntensity;
+    state.fissureGain = chapterState.fissureGain;
+    state.coreOpen = pose.dive;
+    shared.uGlow.value = chapterState.glow;
+
+    applyWash(position.dive);
+    bloom.intensity = BLOOM_INTENSITY + 1.6 * MathUtils.smoothstep(position.dive, 0, 0.5);
+    grain.blendMode.opacity.value = grainOpacity * (1 - wash.amount);
 
     updatePointer(dt);
     for (const m of modules) m.update(state);
@@ -310,21 +387,25 @@ export async function createScene(
   canvas.addEventListener('webglcontextlost', onContextLost);
 
   // Compile every shader up front without blocking (KHR_parallel_shader_compile).
-  camera.position.copy(framing.position);
-  camera.lookAt(framing.target);
+  storyPosition(cameraProgress, storyMap, position);
+  cameraAt(position, camera.aspect, pose);
+  camera.position.copy(pose.position);
+  camera.lookAt(pose.target);
   camera.updateMatrixWorld();
   await renderer.compileAsync(scene, camera);
 
   return {
-    setProgress(p) {
-      // Phase 2: drives the camera path and per-chapter scene states.
-      progress = MathUtils.clamp(p, 0, 1);
-      void progress;
+    setProgress(p, immediate = false) {
+      if (capture) return;
+      targetProgress = MathUtils.clamp(p, 0, 1);
+      if (immediate) cameraProgress = targetProgress;
+    },
+    setStoryMap(map) {
+      storyMap = map;
     },
     setChapter(index) {
-      // Phase 2 adds keyframes for chapters 01–04; until then this holds Chapter 00.
-      chapter = Math.max(0, Math.round(index));
-      resize();
+      const i = MathUtils.clamp(Math.round(index), 0, 4);
+      targetProgress = storyMap.chapters[i as 0 | 1 | 2 | 3 | 4];
     },
     setPointer(x, y) {
       pointerNdc.set(x, y);

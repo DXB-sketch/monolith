@@ -141,7 +141,7 @@ const MID_GPU =
   /mali|adreno|qualcomm|arm|apple gpu|apple a\d|apple|xclipse|samsung|immortalis|maleoon|imagination|intel.*hd graphics/i;
 
 /** Read a forced tier from `?tier=` for testing and poster capture. */
-function forcedTier(): QualityTier | null {
+export function forcedTier(): QualityTier | null {
   const value = new URLSearchParams(location.search).get('tier');
   return value && (TIERS as string[]).includes(value) ? (value as QualityTier) : null;
 }

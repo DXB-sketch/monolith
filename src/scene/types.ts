@@ -18,6 +18,10 @@ export interface SceneState {
   emberDensity: number;
   /** Lava brightness multiplier. */
   lavaIntensity: number;
+  /** Overall fissure brightness. */
+  fissureGain: number;
+  /** 0..1: the core vein opens as the Chapter 04 camera dives into it. */
+  coreOpen: number;
 }
 
 /**

@@ -8,6 +8,8 @@ uniform float uPointerHeat;      // 0..1, smoothed on the CPU
 uniform float uPointerRadius;    // metres
 uniform float uFissureGain;
 uniform float uHeight;
+uniform vec3 uCorePoint;         // object space, on the front face: the vein Chapter 04 dives into
+uniform float uCoreOpen;         // 0..1, the core vein widens and brightens as the camera arrives
 uniform vec4 uLavaLights[LAVA_LIGHTS]; // xyz world position, w intensity
 
 varying vec3 vObjPos;
@@ -16,7 +18,7 @@ varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
 
 // Magma veins. Returns x = bright core, y = soft halo.
-vec2 fissures(vec3 p, float heat) {
+vec2 fissures(vec3 p, float heat, float front) {
   // Stretch vertically so the veins mostly run up and down the slab.
   vec3 sp = p * vec3(1.0, 0.6, 1.0);
   vec3 warp = vec3(snoise(sp * 0.3), snoise(sp * 0.3 + 19.1), snoise(sp * 0.3 + 41.7));
@@ -28,13 +30,13 @@ vec2 fissures(vec3 p, float heat) {
   const float S1 = 0.34;
   float dMain = voronoiBorder3(q * S1 + 3.1) / S1;
   float region = snoise(p * vec3(0.17, 0.085, 0.17) + vec3(4.2, 1.3, 7.7));
-  float veins = smoothstep(-0.12, 0.3, region + heat * 0.3);
+  float veins = smoothstep(-0.12, 0.3, region + heat * 0.1);
   // Breaks and brightness changes along each vein.
   float along = snoise(p * vec3(0.8, 0.5, 0.8) + 23.0);
   veins *= smoothstep(-0.65, -0.15, along);
 
   float width = mix(0.006, 0.04, smoothstep(-0.5, 0.9, snoise(p * 0.6 + 5.0)));
-  width *= 1.0 + heat * 0.6;
+  width *= 1.0 + heat * 0.35;
   float aa = fwidth(dMain);
   float core = (1.0 - smoothstep(width, width + aa * 1.5 + 0.003, dMain)) * veins;
   float halo = exp(-dMain / (0.05 + width * 2.5)) * veins;
@@ -43,7 +45,7 @@ vec2 fissures(vec3 p, float heat) {
   // Branches: smaller cracks that only grow off the main veins.
   const float S2 = 1.25;
   float dBr = voronoiEdge3(q * S2 + 11.0) / S2;
-  float nearMain = 1.0 - smoothstep(0.1, 0.9 + heat * 0.7, dMain);
+  float nearMain = 1.0 - smoothstep(0.1, 0.9 + heat * 0.3, dMain);
   float brMask = nearMain * veins * smoothstep(-0.1, 0.5, snoise(p * 1.4 + 3.3));
   float brW = width * 0.45;
   float brCore = 1.0 - smoothstep(brW, brW + fwidth(dBr) * 1.5 + 0.002, dBr);
@@ -59,6 +61,20 @@ vec2 fissures(vec3 p, float heat) {
   float miCore = 1.0 - smoothstep(0.003, 0.003 + fwidth(dMi) * 1.5 + 0.0015, dMi);
   core = max(core, miCore * nearHot * 0.35);
 #endif
+
+  // The core vein: always present on the front face, wide and bright, so the
+  // Chapter 04 dive always has a fissure to enter. A jagged, mostly vertical
+  // line through uCorePoint that tapers at both ends.
+  vec2 cp = p.xy - uCorePoint.xy;
+  float wob = snoise(vec3(p.y * 0.9, 0.0, 3.0)) * 0.32 + snoise(vec3(p.y * 3.6, 1.0, 5.0)) * 0.08;
+  float dCore = abs(cp.x - wob);
+  float reach = 2.6 + uCoreOpen * 3.0;
+  float coreSpan = 1.0 - smoothstep(reach * 0.35, reach, abs(cp.y));
+  float coreW = mix(0.008, 0.035, coreSpan) * (0.7 + 0.6 * smoothstep(-0.5, 0.8, snoise(p * 0.9 + 41.0)));
+  coreW *= 1.0 + uCoreOpen * 9.0;
+  float coreLine = (1.0 - smoothstep(coreW, coreW + fwidth(dCore) * 1.5 + 0.003, dCore)) * coreSpan * front;
+  core = max(core, coreLine);
+  halo = max(halo, exp(-dCore / (0.08 + uCoreOpen * 0.9)) * coreSpan * front);
 
   return vec2(core, halo);
 }
@@ -154,7 +170,7 @@ void main() {
   }
 
   // ── Fissures ──────────────────────────────────────────────────────────
-  vec2 f = fissures(p, heat);
+  vec2 f = fissures(p, heat, smoothstep(0.6, 0.9, on.z));
   float phase = snoise(p * 0.18 + 2.0) * 6.2831;
   float t = uTime;
   float pulse = 0.74 + 0.15 * sin(t * 0.52 + phase)
@@ -163,7 +179,7 @@ void main() {
   float flow = 0.5 + 0.5 * smoothstep(-0.7, 0.9,
     snoise(vec3(p.x * 0.9, p.y * 0.32 - t * 0.08, p.z * 0.9)));
   float hotter = mix(1.25, 0.75, smoothstep(0.0, uHeight, p.y));
-  float intensity = pulse * flow * hotter * (1.0 + faceHeat * 1.4 + pointerHeat * 2.4) * uFissureGain;
+  float intensity = pulse * flow * hotter * (1.0 + faceHeat * 0.9 + pointerHeat * 2.4) * uFissureGain;
 
   vec3 coreCol = mix(uLava, uLavaHot, 0.8) * f.x * 10.0;
   vec3 haloCol = mix(uEmber, uLava, 0.65) * f.y * 1.6;
