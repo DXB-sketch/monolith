@@ -28,4 +28,7 @@ void main() {
   }
 
   gl_FragColor = vec4(safeHdr(color), 1.0);
+  // Only active without post-processing (direct to screen); no-ops into render targets.
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }

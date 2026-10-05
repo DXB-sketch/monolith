@@ -46,4 +46,7 @@ void main() {
 
   vec3 color = mix(crust, hot * (1.5 + 2.6 * pulse) * uLavaIntensity, molten);
   gl_FragColor = vec4(safeHdr(applyFog(color, vWorldPos)), 1.0);
+  // Only active without post-processing (direct to screen); no-ops into render targets.
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }

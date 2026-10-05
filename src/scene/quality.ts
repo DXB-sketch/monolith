@@ -2,6 +2,7 @@
  * Quality tiers (SCENE_SPEC.md). This module must stay tiny and must never import
  * Three.js: it runs in the initial bundle to decide whether the scene loads at all.
  */
+import { setSignal, withTimeout } from '../lib/diagnostics';
 
 export type QualityTier = 'high' | 'medium' | 'low' | 'off';
 export type SceneTier = Extract<QualityTier, 'high' | 'medium'>;
@@ -47,7 +48,7 @@ export const TIER_SETTINGS: Record<SceneTier, TierSettings> = {
   },
 };
 
-/** Frame-time thresholds (ms) for the 3-second re-evaluation: above this, drop one tier. */
+/** Frame-time thresholds (ms) for the check after the first frame (30 warm-up frames, then 2 s sampled): above this, drop one tier. */
 export const DOWNGRADE_FRAME_MS: Record<SceneTier, number> = {
   high: 1000 / 45,
   medium: 1000 / 26,
@@ -71,6 +72,7 @@ interface GpuInfo {
   software: boolean;
   /** Renderer string or WebGPU vendor/architecture, for classification. */
   renderer: string;
+  source: 'webgpu' | 'webgl';
 }
 
 interface WebGpuAdapter {
@@ -87,27 +89,34 @@ interface WebGpu {
   requestAdapter(options?: { powerPreference?: string }): Promise<WebGpuAdapter | null>;
 }
 
+/** `requestAdapter()` never resolves on some mobile browsers: give it this long. */
+export const WEBGPU_TIMEOUT_MS = 1500;
+
 /**
  * Asynchronous GPU check via WebGPU's adapter: it never blocks the main thread,
- * unlike creating a WebGL context. Returns null when WebGPU can't answer and the
- * WebGL probe has to run instead.
+ * unlike creating a WebGL context. Returns null when WebGPU can't answer (absent,
+ * no adapter on desktop Linux, an error, or the timeout), so the WebGL probe runs.
  */
 async function probeWebGpu(): Promise<GpuInfo | null> {
   const gpu = (navigator as Navigator & { gpu?: WebGpu }).gpu;
   if (!gpu) return null;
   try {
-    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    const adapter = await withTimeout(
+      gpu.requestAdapter({ powerPreference: 'high-performance' }),
+      WEBGPU_TIMEOUT_MS,
+      'WebGPU adapter request',
+    );
     if (!adapter) {
-      // No usable hardware adapter. Desktop Linux Chrome may simply not ship
-      // WebGPU yet, so let the WebGL probe decide there.
+      // Desktop Linux Chrome may simply not ship WebGPU yet: let WebGL decide.
+      // On phones, no adapter means an unsupported or blocklisted GPU.
       const ua = navigator.userAgent;
       if (/Linux/.test(ua) && !/Android/.test(ua)) return null;
-      return { available: true, software: true, renderer: '' };
+      return { available: true, software: true, renderer: '(no WebGPU adapter)', source: 'webgpu' };
     }
     const info = adapter.info ?? {};
     const software = Boolean(info.isFallbackAdapter ?? adapter.isFallbackAdapter);
     const renderer = [info.vendor, info.architecture, info.description].filter(Boolean).join(' ');
-    return { available: true, software, renderer };
+    return { available: true, software, renderer, source: 'webgpu' };
   } catch {
     return null;
   }
@@ -120,15 +129,15 @@ function probeWebGl(): GpuInfo {
     // No failIfMajorPerformanceCaveat: it makes creation several times slower, and
     // software renderers are caught by name below.
     const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance' });
-    if (!gl) return { available: false, software: false, renderer: '' };
+    if (!gl) return { available: false, software: false, renderer: '(no WebGL2)', source: 'webgl' };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = String(
       ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
     );
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return { available: true, software: SOFTWARE_GPU.test(renderer), renderer };
+    return { available: true, software: SOFTWARE_GPU.test(renderer), renderer, source: 'webgl' };
   } catch {
-    return { available: false, software: false, renderer: '' };
+    return { available: false, software: false, renderer: '(WebGL2 probe threw)', source: 'webgl' };
   }
 }
 
@@ -151,9 +160,27 @@ export function prefersReducedMotion(): boolean {
 }
 
 /**
+ * Device memory in GB, or null when the browser doesn't say (Safari and Firefox
+ * never do). Unknown is never treated as low.
+ */
+function deviceMemory(): number | null {
+  const value = (navigator as NavigatorHints).deviceMemory;
+  return typeof value === 'number' && value > 0 ? value : null;
+}
+
+/**
+ * Logical cores, or null when unknown. Safari caps this value for privacy, so it
+ * is never used to rule a device down to Low, only to choose Medium over High.
+ */
+function cores(): number | null {
+  const value = navigator.hardwareConcurrency;
+  return typeof value === 'number' && value > 0 ? value : null;
+}
+
+/**
  * Cheap, synchronous signals only: forced tier, reduced motion, save-data, slow
- * network, memory and cores. Returns a final tier when these settle it, or null
- * when the GPU has to be probed. Safe to call before first paint.
+ * network and (known) very low memory. Returns a final tier when these settle
+ * it, or null when the GPU has to be probed. Safe to call before first paint.
  */
 export function detectTierFast(): QualityTier | null {
   const forced = forcedTier();
@@ -162,38 +189,48 @@ export function detectTierFast(): QualityTier | null {
   if (reduced) return 'off';
 
   const nav = navigator as NavigatorHints;
-  const memory = nav.deviceMemory ?? 8;
-  const cores = nav.hardwareConcurrency ?? 4;
+  const memory = deviceMemory();
   const saveData = nav.connection?.saveData === true;
   const slowNet = /(^|-)2g$/.test(nav.connection?.effectiveType ?? '');
-  if (saveData || slowNet || memory <= 2 || cores <= 2) return 'low';
+  if (saveData || slowNet || (memory !== null && memory <= 2)) return 'low';
   return null;
+}
+
+/** Whether a scene tier is still possible: decides if the scene chunk is worth prefetching. */
+export function sceneStillPossible(): boolean {
+  const fast = detectTierFast();
+  return fast === null || fast === 'high' || fast === 'medium';
 }
 
 /**
  * The full decision: cheap signals, then the GPU. Uses WebGPU's adapter where
- * available (asynchronous, no main-thread cost); otherwise creates a WebGL2
- * context, which can block for tens of milliseconds (far more on software
- * renderers). Call it after first paint, and only on pages that show the scene.
+ * available (asynchronous, no main-thread cost; 1.5 s timeout); otherwise
+ * creates a WebGL2 context, which can block for tens of milliseconds (far more
+ * on software renderers). Call it after first paint, and only on pages that
+ * show the scene. Every signal read is recorded for the ?fps overlay.
  */
 export async function detectTier(): Promise<QualityTier> {
+  const memory = deviceMemory();
+  const coreCount = cores();
+  const shortSide = Math.min(screen.width, screen.height);
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  setSignal('device memory', memory === null ? 'unknown' : `${memory} GB`);
+  setSignal('cores', coreCount === null ? 'unknown' : String(coreCount));
+  setSignal('dpr', String(window.devicePixelRatio || 1));
+  setSignal('screen', `${screen.width}×${screen.height}${coarse ? ' touch' : ''}`);
+
   const fast = detectTierFast();
   if (fast) return fast;
 
   const gpu = (await probeWebGpu()) ?? probeWebGl();
+  setSignal('gpu', `${gpu.source}: ${gpu.renderer || '(not reported)'}`);
   if (!gpu.available) return 'off';
   if (gpu.software || WEAK_GPU.test(gpu.renderer)) return 'low';
 
-  const nav = navigator as NavigatorHints;
-  const memory = nav.deviceMemory ?? 8;
-  const cores = nav.hardwareConcurrency ?? 4;
-  const shortSide = Math.min(screen.width, screen.height);
-  const coarse = matchMedia('(pointer: coarse)').matches;
   // Apple Silicon Macs also report Apple; only treat it as mobile on touch devices.
   const midGpu = MID_GPU.test(gpu.renderer) && !(/apple/i.test(gpu.renderer) && !coarse);
-  if (midGpu || coarse || shortSide < 768 || memory <= 4 || cores <= 4) {
-    return 'medium';
-  }
-
+  const modestMemory = memory !== null && memory <= 4;
+  const modestCores = coreCount !== null && coreCount <= 4;
+  if (midGpu || coarse || shortSide < 768 || modestMemory || modestCores) return 'medium';
   return 'high';
 }

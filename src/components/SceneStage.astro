@@ -43,6 +43,8 @@
     />
   </picture>
   <canvas class="stage__canvas" data-scene-canvas tabindex="-1"></canvas>
+  <!-- Chapter 04's wash, drawn here only when the scene runs without post-processing. -->
+  <div class="stage__wash" data-scene-wash></div>
 </div>
 
 <style>
@@ -71,6 +73,12 @@
   .stage__poster img {
     object-fit: cover;
     object-position: 50% 60%;
+  }
+
+  .stage__wash {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
   }
 
   .stage__canvas {

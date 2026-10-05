@@ -8,19 +8,38 @@
  * - Handles chapter links: smooth scroll to the chapter, then focus its heading.
  * - Reveals content as it enters, without ever hiding what is already in view.
  *
- * Modes: `full` (scene tiers: Lenis, camera, line reveals), `lite` (Low tier:
- * native scroll, simple fades), `static` (reduced motion or tier Off: native
- * scroll, no animation; HUD tracking and links still work).
+ * The story mounts as soon as its chunk is ready and switches mode in place as
+ * the tier settles or changes, without duplicating triggers, Lenis instances or
+ * SplitText splits, and without moving the scroll position:
+ *   pending  tier still being decided: native scroll, HUD only, no reveals yet
+ *   full     scene tiers: Lenis, camera and scene state, line reveals
+ *   lite     Low tier: native scroll, simple fades
+ *   static   reduced motion or tier Off: native scroll, no animation
  */
 import { blendChapterState, CHAPTER_STATES, createChapterState } from '../scene/chapters';
 import { DEFAULT_STORY_MAP, storyPosition, type StoryMap } from '../scene/story-map';
-import { createScroll, gsap, ScrollTrigger } from './scroll';
+import {
+  createSmoothScroll,
+  gsap,
+  nativeScrollTo,
+  ScrollTrigger,
+  type SmoothScroll,
+} from './scroll';
 
-export type StoryMode = 'full' | 'lite' | 'static';
+export type StoryMode = 'pending' | 'full' | 'lite' | 'static';
 
 export interface StoryBridge {
   setProgress(p: number, immediate?: boolean): void;
   setStoryMap(map: StoryMap): void;
+}
+
+export interface StoryController {
+  readonly mode: StoryMode;
+  /** Switch mode in place (tier resolved or changed, reduced motion switched on). */
+  setMode(mode: StoryMode): void;
+  /** Re-measure the chapters soon (debounced): after the first frame, after fonts load. */
+  requestRefresh(): void;
+  unmount(): void;
 }
 
 interface Options {
@@ -31,8 +50,15 @@ interface Options {
 const CHAPTER_IDS = ['arrival', 'face-i', 'face-ii', 'the-lab', 'the-core'] as const;
 const html = document.documentElement;
 const temperature = new Intl.NumberFormat('en-AU');
+const REFRESH_DEBOUNCE_MS = 150;
 
-export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
+export async function mountStory(
+  root: HTMLElement,
+  { mode: initialMode, scene }: Options,
+): Promise<StoryController> {
+  let mode = initialMode;
+  let disposed = false;
+
   // A refresh records each scroller's *cached* position and puts it back after
   // measuring. After a ClientRouter swap that cache is stale (the top of the
   // page), so clear it first, and keep the page exactly where it really is.
@@ -43,7 +69,42 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
     if (Math.abs(window.scrollY - y) > 1) window.scrollTo({ top: y, behavior: 'instant' });
     ScrollTrigger.update();
   };
-  const scroll = await createScroll(mode === 'full');
+  let refreshTimer = 0;
+  const requestRefresh = () => {
+    if (disposed) return;
+    clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => {
+      if (!disposed) {
+        refresh();
+        smooth?.lenis.resize();
+      }
+    }, REFRESH_DEBOUNCE_MS);
+  };
+
+  // ── Smooth scroll: present only in full mode ───────────────────────────
+  let smooth: SmoothScroll | null = null;
+  let smoothToken = 0;
+  const applySmooth = async () => {
+    if (mode === 'full' && !smooth) {
+      const token = ++smoothToken;
+      const created = await createSmoothScroll();
+      // The mode changed (or the story unmounted) while Lenis was loading.
+      if (token !== smoothToken || disposed || mode !== 'full') {
+        created.destroy();
+        return;
+      }
+      smooth = created;
+    } else if (mode !== 'full' && smooth) {
+      smoothToken++;
+      smooth.destroy();
+      smooth = null;
+    } else if (mode !== 'full') {
+      smoothToken++; // cancel any Lenis still loading
+    }
+  };
+  const scrollTo = (y: number, done?: () => void) =>
+    smooth ? smooth.scrollTo(y, done) : nativeScrollTo(y, done);
+
   const sections = CHAPTER_IDS.map((id) => document.getElementById(id));
   const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-chapter-link]'));
   const tempEl = document.querySelector<HTMLElement>('[data-core-temp]');
@@ -51,19 +112,17 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
   let washed = false;
   /** The HUD's small labels can't sit over the bright wash: step aside while it burns. */
   const setWashed = (dive: number) => {
-    const next = dive > 0.12 && dive < 0.74;
+    const next = mode === 'full' && dive > 0.12 && dive < 0.74;
     if (next === washed) return;
     washed = next;
     hud?.toggleAttribute('data-washed', next);
   };
-  const splits: { revert(): void }[] = [];
-  /** Line reveals are created in SplitText's onSplit callback, outside the context: track them. */
-  const lineTweens = new Set<gsap.core.Tween>();
 
   let map: StoryMap = DEFAULT_STORY_MAP;
   let storyStart = 0;
   let storyRange = 1;
   let shownTemp = 0;
+  let activeIndex = 0;
   const position = { chapter: 0, dive: 0 };
   const chapterState = createChapterState();
 
@@ -74,7 +133,18 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
     tempEl.textContent = `${temperature.format(rounded)}°C`;
   };
 
+  const currentProgress = () =>
+    Math.min(1, Math.max(0, (window.scrollY - storyStart) / storyRange));
+
+  /** Full mode: temperature and HUD follow the exact story position. */
+  const followProgress = (p: number) => {
+    blendChapterState(storyPosition(p, map, position), chapterState);
+    setTemp(chapterState.coreTemp);
+    setWashed(position.dive);
+  };
+
   const setActive = (index: number) => {
+    activeIndex = index;
     links.forEach((link, i) => {
       const active = i === index;
       link.toggleAttribute('data-active', active);
@@ -141,7 +211,7 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
       focusHeading(index);
       return;
     }
-    scroll.scrollTo(chapterScrollY(index), () => focusHeading(index));
+    scrollTo(chapterScrollY(index), () => focusHeading(index));
   };
 
   // In-page chapter links (HUD, "Skip to the work"). Captured before ClientRouter,
@@ -174,12 +244,9 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
       onRefresh: (self) => measure(self.start, self.end),
       onUpdate: (self) => {
         if (mode === 'static') return;
+        // Always kept current: a scene that arrives later starts from here.
         scene.setProgress(self.progress);
-        if (mode === 'full') {
-          blendChapterState(storyPosition(self.progress, map, position), chapterState);
-          setTemp(chapterState.coreTemp);
-          setWashed(position.dive);
-        }
+        if (mode === 'full') followProgress(self.progress);
       },
     });
 
@@ -198,6 +265,7 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
   }, root);
 
   // Deep link to a chapter: land on its framing, not on the top of its section.
+  // (The tall story layout exists whenever motion is allowed, whatever the tier.)
   const hashIndex = CHAPTER_IDS.indexOf(location.hash.slice(1) as (typeof CHAPTER_IDS)[number]);
   if (hashIndex > 0 && mode !== 'static') {
     const sectionTop = sections[hashIndex]!.getBoundingClientRect().top;
@@ -208,28 +276,29 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
 
   // Jump the camera to wherever the page already is (deep link, back navigation).
   refresh();
-  const startProgress = Math.min(1, Math.max(0, (window.scrollY - storyStart) / storyRange));
-  scene.setProgress(mode === 'static' ? 0 : startProgress, true);
-  if (mode === 'full') {
-    blendChapterState(storyPosition(startProgress, map, position), chapterState);
-    setTemp(chapterState.coreTemp);
-    setWashed(position.dive);
-  }
-  scroll.lenis?.resize();
+  scene.setProgress(mode === 'static' ? 0 : currentProgress(), true);
+  if (mode === 'full') followProgress(currentProgress());
 
-  // Dev hook for checking that navigation never leaves orphan triggers: ?debug
-  if (new URLSearchParams(location.search).has('debug')) {
-    (window as unknown as { __story?: object }).__story = {
-      triggers: () => ScrollTrigger.getAll().length,
-    };
-  }
+  // Chapter anchors measured before the fonts arrive can be off: measure again.
+  document.fonts?.ready.then(requestRefresh);
 
-  // Reveals: hidden states exist only once JS has marked the page motion-ready,
-  // and only for content that is still below the viewport.
-  if (mode !== 'static') {
-    html.classList.add('motion-ready');
-    const SplitText = mode === 'full' ? (await import('gsap/SplitText')).SplitText : null;
+  // ── Reveals: set up once, when the tier has settled ────────────────────
+  // Hidden states exist only once JS has marked the page motion-ready, and only
+  // for content that is still below the viewport at that moment.
+  const splits: { revert(): void }[] = [];
+  /** Line reveals are created in SplitText's onSplit callback, outside the context: track them. */
+  const lineTweens = new Set<gsap.core.Tween>();
+  const revealTweens = new Set<gsap.core.Tween>();
+  let revealsSetUp = false;
+
+  const setupReveals = async (revealMode: StoryMode) => {
+    if (revealsSetUp || revealMode === 'pending' || revealMode === 'static') return;
+    revealsSetUp = true;
+    const SplitText = revealMode === 'full' ? (await import('gsap/SplitText')).SplitText : null;
+    if (disposed || mode === 'static') return;
     if (SplitText) gsap.registerPlugin(SplitText);
+    html.classList.add('motion-ready');
+    const full = revealMode === 'full';
 
     ctx.add(() => {
       const threshold = window.innerHeight * 0.9;
@@ -265,21 +334,76 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
           return;
         }
 
-        gsap.from(el, {
-          // Opacity only: visibility:hidden would drop links out of the tab order.
-          opacity: 0,
-          y: mode === 'full' ? 28 : 0,
-          duration: mode === 'full' ? 1.3 : 0.8,
-          ease: mode === 'full' ? 'expo.out' : 'power2.out',
-          scrollTrigger: trigger,
-        });
+        revealTweens.add(
+          gsap.from(el, {
+            // Opacity only: visibility:hidden would drop links out of the tab order.
+            opacity: 0,
+            y: full ? 28 : 0,
+            duration: full ? 1.3 : 0.8,
+            ease: full ? 'expo.out' : 'power2.out',
+            scrollTrigger: trigger,
+          }),
+        );
       });
     });
     refresh();
+  };
+
+  /** Static mode: everything visible now, no animation left behind. */
+  const finishReveals = () => {
+    for (const tween of [...lineTweens, ...revealTweens]) {
+      tween.progress(1);
+      tween.scrollTrigger?.kill();
+      tween.kill();
+    }
+    lineTweens.clear();
+    revealTweens.clear();
+    splits.forEach((split) => split.revert());
+    splits.length = 0;
+    html.classList.remove('motion-ready');
+  };
+
+  const setMode = (next: StoryMode) => {
+    if (disposed || next === mode) return;
+    mode = next;
+    void applySmooth();
+    if (next === 'full') {
+      // Drive the scene from wherever the visitor has already scrolled.
+      const p = currentProgress();
+      scene.setProgress(p, true);
+      followProgress(p);
+    } else {
+      setWashed(0);
+      setTemp(CHAPTER_STATES[activeIndex]!.coreTemp);
+    }
+    if (next === 'static') finishReveals();
+    else void setupReveals(next);
+  };
+
+  void applySmooth();
+  void setupReveals(mode);
+
+  // Dev hook for checking that mode switches and navigation never leave orphan
+  // triggers or duplicate Lenis instances: ?debug
+  if (new URLSearchParams(location.search).has('debug')) {
+    (window as unknown as { __story?: object }).__story = {
+      triggers: () => ScrollTrigger.getAll().length,
+      mode: () => mode,
+      lenis: () => (smooth ? 1 : 0),
+      lenisRoots: () => document.querySelectorAll('html.lenis').length,
+      splits: () => splits.length,
+    };
   }
 
   return {
+    get mode() {
+      return mode;
+    },
+    setMode,
+    requestRefresh,
     unmount() {
+      disposed = true;
+      clearTimeout(refreshTimer);
       document.removeEventListener('click', onClick, true);
       root.removeEventListener('focusin', onFocusIn);
       hud?.removeAttribute('data-washed');
@@ -291,7 +415,9 @@ export async function mountStory(root: HTMLElement, { mode, scene }: Options) {
       ctx.revert();
       // The story is the only ScrollTrigger user on the site: leave none behind.
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
-      scroll.destroy();
+      smoothToken++;
+      smooth?.destroy();
+      smooth = null;
       html.classList.remove('motion-ready');
     },
   };
