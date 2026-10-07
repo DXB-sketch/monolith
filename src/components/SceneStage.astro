@@ -101,10 +101,14 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: url('/textures/grain.png') repeat;
     background-size: 128px 128px;
     mix-blend-mode: overlay;
     opacity: 0.1;
+  }
+
+  /* Only Lite downloads the grain tile. */
+  :global(html[data-tier='lite']) .stage__look::after {
+    background-image: url('/textures/grain.png');
   }
 
   :global(html[data-tier='lite']) .stage:global(.is-live) .stage__look {

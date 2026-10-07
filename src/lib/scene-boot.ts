@@ -49,6 +49,8 @@ const SCENE_CHUNK_TIMEOUT_MS = 30000;
 const SCENE_SETUP_TIMEOUT_MS = 45000;
 const FIRST_FRAME_TIMEOUT_MS = 8000;
 const CONTEXT_RESTORE_TIMEOUT_MS = 10000;
+/** After `load`, how long the GPU check may run before the scene chunk is prefetched. */
+const PREFETCH_DELAY_MS = 1000;
 /** Matches --dur-fade: the canvas's cross-fade over the poster. */
 const CROSSFADE_MS = 1200;
 
@@ -208,16 +210,18 @@ function detect() {
 }
 
 /**
- * If the GPU check is still running once the page has loaded (poster and fonts
- * in), fetch the scene chunk alongside it so the two overlap. Usually the check
- * has already finished by then: a scene tier is importing the chunk anyway, and
- * Low/Off devices download nothing. Waiting for `load` keeps the prefetch away
- * from LCP entirely (measured: prefetching at first paint, even at idle
- * priority, pushed Lighthouse LCP from 1.7–2.1 s to 2.2–2.9 s).
+ * If the GPU check is still running a second after the page has loaded (a
+ * slow WebGPU adapter, a software renderer), fetch the scene chunk alongside it
+ * so the two overlap. On real GPUs the check is done long before: a live tier
+ * is importing the chunk anyway, and the poster downloads nothing. Waiting this
+ * long keeps the prefetch away from LCP (measured: prefetching at first paint,
+ * even at idle priority, pushed Lighthouse LCP from 1.7–2.1 s to 2.2–2.9 s, and
+ * prefetching right at `load` still did on fast loads).
  */
 function schedulePrefetch() {
-  if (document.readyState === 'complete') prefetchScene();
-  else window.addEventListener('load', () => prefetchScene(), { once: true });
+  const later = () => setTimeout(prefetchScene, PREFETCH_DELAY_MS);
+  if (document.readyState === 'complete') later();
+  else window.addEventListener('load', later, { once: true });
 }
 
 /**

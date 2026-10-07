@@ -156,6 +156,8 @@ interface WebGpu {
 
 /** `requestAdapter()` never resolves on some mobile browsers: give it this long. */
 export const WEBGPU_TIMEOUT_MS = 1500;
+/** The worker's WebGL probe; past this, the main thread tries. */
+const WEBGL_WORKER_TIMEOUT_MS = 2000;
 
 const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
 /** Discrete GPUs and Apple M-series. */
@@ -196,7 +198,7 @@ async function probeWebGpu(): Promise<GpuInfo | null> {
 }
 
 /** Synchronous WebGL2 probe. Blocks briefly while the context is created. */
-function probeWebGl(): GpuInfo {
+function probeWebGlHere(): GpuInfo {
   try {
     const canvas = document.createElement('canvas');
     // No failIfMajorPerformanceCaveat: it makes creation several times slower, and
@@ -212,6 +214,60 @@ function probeWebGl(): GpuInfo {
   } catch {
     return { available: false, software: false, renderer: '(WebGL2 probe threw)', source: 'webgl' };
   }
+}
+
+/** Runs in a worker: a WebGL2 context on an OffscreenCanvas, its renderer string. */
+const WORKER_PROBE = `onmessage = () => {
+  let renderer = null;
+  try {
+    const gl = new OffscreenCanvas(1, 1).getContext('webgl2', { powerPreference: 'high-performance' });
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      renderer = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      const lose = gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+    }
+  } catch (e) {}
+  postMessage(renderer);
+};`;
+
+/**
+ * The WebGL2 probe, off the main thread where the browser allows it: creating
+ * a context can block for tens of milliseconds on a GPU, and for seconds on a
+ * software renderer. Falls back to the main thread if the worker can't create
+ * one (no OffscreenCanvas WebGL in older Safari), which proves nothing.
+ */
+async function probeWebGl(): Promise<GpuInfo> {
+  if (typeof OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined') {
+    let worker: Worker | null = null;
+    let url = '';
+    try {
+      url = URL.createObjectURL(new Blob([WORKER_PROBE], { type: 'text/javascript' }));
+      worker = new Worker(url);
+      const renderer = await withTimeout(
+        new Promise<string | null>((resolve, reject) => {
+          worker!.onmessage = (event) => resolve(event.data as string | null);
+          worker!.onerror = () => reject(new Error('worker failed'));
+          worker!.postMessage(0);
+        }),
+        WEBGL_WORKER_TIMEOUT_MS,
+        'WebGL probe (worker)',
+      );
+      if (renderer !== null)
+        return {
+          available: true,
+          software: SOFTWARE_GPU.test(renderer),
+          renderer,
+          source: 'webgl',
+        };
+    } catch {
+      // Fall through to the main-thread probe.
+    } finally {
+      worker?.terminate();
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+  return probeWebGlHere();
 }
 
 /** Legacy names from Phase 1–2 still work: low and off both mean the poster. */
@@ -333,8 +389,8 @@ function classify(renderer: string): SceneTier {
 
 /**
  * The full decision: cheap rules, then the session cache, then the GPU.
- * WebGPU's adapter first (asynchronous; 1.5 s timeout), then a WebGL2 probe,
- * which can block for tens of milliseconds (far more on software renderers).
+ * WebGPU's adapter first (asynchronous; 1.5 s timeout), then a WebGL2 probe
+ * in a worker (main thread only where workers can't create a context).
  * Call it after first paint, and only on pages that show the scene. Every
  * signal read is recorded for the ?fps overlay.
  */
@@ -361,7 +417,7 @@ export async function detectTier(): Promise<{ tier: QualityTier; reason: string 
     return { tier: cached.tier, reason: `remembered this session: ${cached.reason}` };
   }
 
-  const gpu = (await probeWebGpu()) ?? probeWebGl();
+  const gpu = (await probeWebGpu()) ?? (await probeWebGl());
   setSignal('gpu', `${gpu.source}: ${gpu.renderer || '(not reported)'}`);
   let result: { tier: QualityTier; reason: string };
   if (!gpu.available) result = { tier: 'poster', reason: 'no WebGL2' };

@@ -37,8 +37,8 @@
     let opened = false;
     const inputs = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
     const elapsed = function () {
-    return performance.now() - start;
-  };
+      return performance.now() - start;
+    };
     function cleanup() {
       root.classList.remove('intro-on', 'intro-open');
       delete root.dataset.introAt;
