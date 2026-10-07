@@ -10,7 +10,15 @@
  *   answers) and cleared after a successful send;
  * - the brief is sent as JSON, and the in-world confirmation replaces the form.
  */
-import { STEPS, validate, type FieldErrors, type FieldName } from './contact-schema';
+import { STEPS, type FieldName } from './contact-fields';
+import type { FieldErrors } from './contact-schema';
+
+/**
+ * The validator brings Zod, so it loads on demand: fetched as soon as the
+ * visitor starts on the form, well before the first Next.
+ */
+let validator: Promise<typeof import('./contact-schema').validate> | undefined;
+const loadValidator = () => (validator ??= import('./contact-schema').then((m) => m.validate));
 
 const DRAFT_KEY = 'monolith:brief';
 const LABELS: Record<FieldName, string> = {
@@ -152,14 +160,22 @@ export function initBrief() {
     if (focus) steps[current]!.querySelector<HTMLElement>('[data-brief-legend]')?.focus();
   };
 
-  const validateStep = (index: number) => {
+  const validateStep = async (index: number) => {
     const fields = STEPS[index]!.fields as readonly FieldName[];
+    const validate = await loadValidator();
     const result = validate(values(), fields);
     return result.ok ? null : result.errors;
   };
 
-  next.addEventListener('click', () => {
-    const errors = validateStep(current);
+  form.addEventListener('focusin', loadValidator, { once: true });
+  form.addEventListener('pointerdown', loadValidator, { once: true });
+
+  let checking = false;
+  next.addEventListener('click', async () => {
+    // A second click while the validator is still arriving must not skip a step.
+    if (checking) return;
+    checking = true;
+    const errors = await validateStep(current).finally(() => (checking = false));
     if (errors) return showErrors(errors);
     clearErrors();
     showStep(current + 1);
@@ -184,6 +200,7 @@ export function initBrief() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const data = values();
+    const validate = await loadValidator();
     const result = validate(data);
     if (!result.ok) {
       const first = (Object.keys(result.errors) as FieldName[])
