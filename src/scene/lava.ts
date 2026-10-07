@@ -1,7 +1,9 @@
-import { BufferAttribute, BufferGeometry, Mesh, ShaderMaterial } from 'three';
+import { BufferAttribute, BufferGeometry, Mesh, ShaderMaterial, type Texture } from 'three';
 import type { Channel } from './channel';
 import { smoothstep } from './noise';
-import { terrainHeight } from './terrain';
+import type { TierSettings } from './quality';
+import { terrainHeight } from './ground';
+import { CELLS_PER_TILE } from './textures';
 import type { SceneModule, SceneState } from './types';
 import { FRAGMENT_PRELUDE, type SharedUniforms } from './uniforms';
 import vertexShader from './shaders/lava.vert?raw';
@@ -59,22 +61,42 @@ function buildRibbon(channel: Channel) {
   return geometry;
 }
 
-export function createLava(shared: SharedUniforms, channel: Channel): SceneModule {
+export interface LavaModule extends SceneModule {
+  /** 0..1: the flow brightens from dark as the layer appears. */
+  setFade(value: number): void;
+}
+
+export function createLava(
+  shared: SharedUniforms,
+  channel: Channel,
+  tier: TierSettings,
+  textures: { noise: Texture; cells: Texture },
+): LavaModule {
   const geometry = buildRibbon(channel);
   const uniforms = {
     ...shared,
     uLavaIntensity: { value: 1 },
+    uFade: { value: 1 },
+    uNoise: { value: textures.noise },
+    uCells: { value: textures.cells },
   };
+  const defines: Record<string, number> = { CELLS_PER_TILE: CELLS_PER_TILE };
+  if (tier.bakedDetail) defines.BAKED_DETAIL = 1;
+  if (tier.vertexFog) defines.VERTEX_FOG = 1;
   const material = new ShaderMaterial({
     uniforms,
-    vertexShader,
+    vertexShader: FRAGMENT_PRELUDE + vertexShader,
     fragmentShader: FRAGMENT_PRELUDE + fragmentShader,
+    defines,
   });
   const mesh = new Mesh(geometry, material);
   mesh.name = 'lava';
 
   return {
     object: mesh,
+    setFade(value) {
+      uniforms.uFade.value = value;
+    },
     update(state: SceneState) {
       uniforms.uLavaIntensity.value = state.lavaIntensity;
     },

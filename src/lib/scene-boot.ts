@@ -3,14 +3,15 @@
  * WebGL scene has rendered a frame, and owns the scene's lifecycle.
  *
  * This file is in the initial bundle, so it never imports Three.js. The scene
- * is a separate chunk, executed only for the High and Medium tiers on pages
- * that mark a scene region with `data-scene-anchor`.
+ * is a separate chunk, executed only for the live tiers (High, Medium, Lite) on
+ * pages that mark a scene region with `data-scene-anchor`.
  *
- * The tier is reactive state. It starts from cheap signals (or "pending" while
- * the GPU is checked after first paint) and can change later: the GPU check
- * resolving, the frame-time downgrade, a lost GPU context, reduced motion being
- * switched on, or a failed setup. Every change goes through setTier(), which
- * starts or stops the scene and switches the scroll story's mode in place.
+ * The tier is reactive state. It starts from cheap signals or this session's
+ * memory (or "pending" while the GPU is checked after first paint) and can
+ * change later: the GPU check resolving, the scene stepping a tier up or down
+ * in place, a lost GPU context, reduced motion being switched on, or a failed
+ * setup. Every change goes through setTier(), which starts or stops the scene
+ * and switches the scroll story's mode in place.
  *
  * Nothing here can wait forever: every asynchronous step has a timeout, and
  * every path ends in the live scene or the poster with a recorded reason
@@ -28,11 +29,15 @@ import {
 import {
   detectTier,
   detectTierFast,
+  FISSURE_ATLAS_URL,
   forcedTier,
+  isSceneTier,
   prefersReducedMotion,
+  readTierCache,
   sceneStillPossible,
+  TIER_SETTINGS,
+  writeTierCache,
   type QualityTier,
-  type SceneTier,
 } from '../scene/quality';
 import type { SceneHandle, StoryMap } from '../scene/index';
 import type { StoryBridge, StoryController, StoryMode } from './story';
@@ -58,12 +63,14 @@ const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
 /** Test hook (?debug&delayscene=5000): hold the scene import back to test late arrival. */
 const DELAY_SCENE_MS = DEBUG ? Number(params.get('delayscene') ?? 0) : 0;
-/** Test hook (?debug&keeptier): skip the frame-time downgrade without forcing a tier. */
+/** Test hook (?debug&keeptier): never change tier, without forcing one. */
 const KEEP_TIER = DEBUG && params.has('keeptier');
+/** Test hook (?scale=0.75): hold the resolution scale. */
+const FIXED_SCALE = params.has('scale') ? Number(params.get('scale')) || undefined : undefined;
 /** ?fps: time each scene layer on the GPU for the overlay. */
 const GPU_TIMING = params.has('fps');
 
-let tier: QualityTier = 'off';
+let tier: QualityTier = 'poster';
 /** True until the GPU has been checked (after first paint, on scene pages only). */
 let pending = true;
 let detecting = false;
@@ -81,6 +88,7 @@ let sceneBlocked = '';
 let firstFrameSeen = false;
 let firstFrameTimer = 0;
 let restoreTimer = 0;
+let atlasFetch: Promise<Blob> | null = null;
 
 let anchor: Element | null = null;
 let anchorVisible = false;
@@ -99,7 +107,6 @@ const html = document.documentElement;
 const stage = () => document.querySelector<HTMLElement>('[data-scene-stage]');
 const canvas = () => document.querySelector<HTMLCanvasElement>('[data-scene-canvas]');
 const washLayer = () => document.querySelector<HTMLElement>('[data-scene-wash]');
-const isSceneTier = (t: QualityTier): t is SceneTier => t === 'high' || t === 'medium';
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -139,16 +146,23 @@ function sync() {
   else handle.pause();
 }
 
+/**
+ * Live tiers get the full story (camera, Lenis); the poster gets native scroll
+ * with simple reveals, and reduced motion the static story.
+ */
 function storyMode(): StoryMode {
-  if (prefersReducedMotion() || (!pending && tier === 'off')) return 'static';
+  if (prefersReducedMotion()) return 'static';
   if (pending) return 'pending';
-  return tier === 'low' ? 'lite' : 'full';
+  return tier === 'poster' ? 'lite' : 'full';
 }
 
 // ── Tier ──────────────────────────────────────────────────────────────────
 
-/** The single place the tier changes. Starts or stops the scene and re-modes the story. */
-function setTier(next: QualityTier, reason: string) {
+/**
+ * The single place the tier changes. Starts or stops the scene and re-modes the
+ * story. `fromScene`: the running scene already switched itself (in place).
+ */
+function setTier(next: QualityTier, reason: string, fromScene = false) {
   const wasPending = pending;
   if (!wasPending && next === tier) return;
   tier = next;
@@ -156,14 +170,16 @@ function setTier(next: QualityTier, reason: string) {
   tierReason = reason;
   applyRootState();
   mark(wasPending ? 'tier final' : 'tier changed', `${next}: ${reason}`);
+  if (fromScene) writeTierCache({ tier: next, reason });
 
   if (isSceneTier(next)) {
-    void ensureScene();
+    if (!fromScene) void ensureScene();
   } else if (handle || sceneLoading) {
     teardownScene(`tier ${next}: ${reason}`);
   } else {
     recordPosterTier();
   }
+  if (next === 'poster') document.dispatchEvent(new CustomEvent('monolith:poster'));
   story?.setMode(storyMode());
 }
 
@@ -172,17 +188,6 @@ function recordPosterTier() {
   if (!anchor || pending || isSceneTier(tier) || posterReasonRecorded) return;
   posterReasonRecorded = true;
   fallback(`poster: tier ${tier} (${tierReason})`);
-}
-
-function fastReason() {
-  if (forcedTier()) return 'forced with ?tier=';
-  if (prefersReducedMotion()) return 'prefers-reduced-motion';
-  return 'save-data, 2G or ≤2 GB device memory';
-}
-
-function gpuReason() {
-  const { signals } = getDiagnostics();
-  return signals.gpu ?? 'GPU check';
 }
 
 /** The deferred GPU check, after first paint, with the scene chunk prefetching alongside. */
@@ -194,9 +199,10 @@ function detect() {
     mark('tier check started');
     try {
       const result = await withTimeout(detectTier(), TIER_TIMEOUT_MS, 'tier detection');
-      if (pending) setTier(result, gpuReason());
+      if (pending) setTier(result.tier, result.reason);
     } catch (e) {
-      if (pending) setTier('low', `tier detection failed: ${errorText(e)}`);
+      // Unknown is never weak: an unanswered GPU check still gets the lightest live tier.
+      if (pending) setTier('lite', `tier detection failed (${errorText(e)}): trying lite`);
     }
   });
 }
@@ -218,8 +224,8 @@ function schedulePrefetch() {
  * Fetch (but don't execute) the scene chunk. `rel="prefetch"` is idle priority
  * (`modulepreload` was fetched at high priority whatever its fetchpriority), and
  * the later import() is served from the prefetch cache. Skipped when cheap
- * signals already rule the scene out (save-data, 2G, very low memory, reduced
- * motion), once the tier has settled, and in dev.
+ * signals already rule the scene out (save-data, reduced motion), once the tier
+ * has settled, and in dev.
  */
 function prefetchScene() {
   if (prefetched || !pending || !sceneStillPossible() || SCENE_CHUNK_URL.startsWith('__')) return;
@@ -265,6 +271,8 @@ function onFirstFrame() {
   clearTimeout(firstFrameTimer);
   mark('first frame');
   stage()?.classList.add('is-live');
+  // The intro (first visit) can open now: L1 is on screen.
+  document.dispatchEvent(new CustomEvent('monolith:scene-ready'));
   setTimeout(() => mark('poster cross-fade done'), CROSSFADE_MS);
   story?.requestRefresh();
 }
@@ -287,6 +295,7 @@ function armFirstFrameCheck() {
  */
 function teardownScene(reason: string, { loseContext = false } = {}) {
   sceneToken++;
+  atlasFetch = null;
   sceneLoading = false;
   clearTimeout(firstFrameTimer);
   clearTimeout(restoreTimer);
@@ -324,6 +333,20 @@ function onContextRestored() {
   void ensureScene();
 }
 
+/**
+ * The fissure atlas (Medium, Lite), fetched alongside the scene chunk rather
+ * than after it. The scene decodes it; a failed fetch leaves the flat glow.
+ */
+function fetchAtlas(): Promise<Blob> | undefined {
+  if (!isSceneTier(tier) || !TIER_SETTINGS[tier].bakedFissures) return undefined;
+  atlasFetch ??= fetch(FISSURE_ATLAS_URL).then((response) => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    mark('fissure atlas downloaded');
+    return response.blob();
+  });
+  return atlasFetch;
+}
+
 async function ensureScene() {
   if (handle || sceneLoading || sceneBlocked || !anchor || pending || !isSceneTier(tier)) return;
   const target = canvas();
@@ -332,6 +355,9 @@ async function ensureScene() {
   sceneLoading = true;
   try {
     mark('scene chunk requested');
+    const atlas = fetchAtlas();
+    // Unhandled until the scene picks it up; never an unhandled rejection.
+    atlas?.catch(() => {});
     if (DELAY_SCENE_MS > 0) await sleep(DELAY_SCENE_MS);
     const mod = await withTimeout(
       import('../scene/index'),
@@ -341,13 +367,27 @@ async function ensureScene() {
     mark('scene chunk loaded');
     if (token !== sceneToken || !isSceneTier(tier)) return;
 
+    const cache = readTierCache();
     const setup = mod.createScene(target, {
       tier,
+      startScale: cache?.scale,
+      ceiling: cache?.ceiling,
+      upgraded: cache?.upgraded,
+      atlas,
       fixedTier: forcedTier() !== null || KEEP_TIER,
+      fixedScale: FIXED_SCALE,
       onFirstFrame,
       onPhase: (name, detail) => mark(name, detail),
       onIssue: (message) => error(message),
-      onTierChange: (next, reason) => setTier(next, reason),
+      onDecision: (message) => info(`scene: ${message}`),
+      onSettle: (settled) =>
+        writeTierCache({
+          tier: settled.tier,
+          scale: settled.scale,
+          ceiling: settled.ceiling,
+          upgraded: settled.upgraded,
+        }),
+      onTierChange: (next, reason) => setTier(next, reason, isSceneTier(next)),
       onContextLost,
       onContextRestored,
       onWash: setWash,
@@ -376,6 +416,8 @@ async function ensureScene() {
   } catch (e) {
     if (token !== sceneToken) return;
     sceneBlocked = errorText(e);
+    // Remembered for this session: returning home doesn't retry a failed context.
+    writeTierCache({ tier: 'poster', reason: `scene unavailable: ${sceneBlocked}` });
     teardownScene(`scene unavailable: ${sceneBlocked}`);
   } finally {
     if (token === sceneToken) sceneLoading = false;
@@ -475,8 +517,12 @@ export function initSceneBoot() {
   started = true;
   mark('boot start');
 
+  // Cheap rules first, then this session's memory (so returning home doesn't
+  // probe the GPU again); otherwise the GPU check runs after first paint.
   const fast = detectTierFast();
-  if (fast) setTier(fast, fastReason());
+  const cached = fast ? null : readTierCache();
+  if (fast) setTier(fast.tier, fast.reason);
+  else if (cached) setTier(cached.tier, `remembered this session: ${cached.reason}`);
   else mark('tier provisional', 'pending the GPU check');
   applyRootState();
 
@@ -491,15 +537,13 @@ export function initSceneBoot() {
   document.addEventListener('visibilitychange', sync);
 
   matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
-    if (prefersReducedMotion()) setTier('off', 'reduced motion switched on');
+    if (prefersReducedMotion()) setTier('poster', 'reduced motion switched on');
   });
 
   bindPointer();
   onPage();
   setSceneStats(() =>
-    handle
-      ? { gpu: handle.gpuTimings()?.ms ?? null, lines: [`setup ${handle.description}`] }
-      : null,
+    handle ? { gpu: handle.gpuTimings()?.ms ?? null, lines: handle.stats() } : null,
   );
 
   // ?debug: inspect boot state and simulate tier changes from tests or the console.

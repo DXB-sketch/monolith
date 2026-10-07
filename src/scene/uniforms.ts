@@ -28,6 +28,8 @@ export function createSharedUniforms() {
     uTime: { value: 0 },
     uFogDensity: { value: 0.0019 },
     uGlow: { value: 1 },
+    // The lava layer's light on the stone and the ground; ramps up as the layer fades in.
+    uLavaGlow: { value: 1 },
   } satisfies Uniforms;
 }
 

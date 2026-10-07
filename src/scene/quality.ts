@@ -1,28 +1,55 @@
 /**
- * Quality tiers (SCENE_SPEC.md). This module must stay tiny and must never import
+ * Quality tiers (Phase 2.5). This module must stay tiny and must never import
  * Three.js: it runs in the initial bundle to decide whether the scene loads at all.
+ *
+ *   high    discrete GPUs, Apple M-series: the full procedural scene
+ *   medium  strong integrated GPUs, recent flagship phones: baked fissure
+ *           field, lighter post-processing
+ *   lite    any other hardware-accelerated WebGL2 device: everything baked, no
+ *           post-processing chain, reduced resolution, 30 fps
+ *   poster  only reduced motion, save-data, no WebGL2, a software renderer, a
+ *           failed WebGL context, or Lite unable to hold ~24 fps at half resolution
+ *
+ * A device has to prove it is too weak to get the poster: unknown signals are
+ * unknown, never weak. The running scene adjusts from there (resolution first,
+ * then extras, then one tier at a time; upgrades too).
  */
 import { setSignal, withTimeout } from '../lib/diagnostics';
 
-export type QualityTier = 'high' | 'medium' | 'low' | 'off';
-export type SceneTier = Extract<QualityTier, 'high' | 'medium'>;
+export type QualityTier = 'high' | 'medium' | 'lite' | 'poster';
+export type SceneTier = Exclude<QualityTier, 'poster'>;
 
 export interface TierSettings {
-  /** Device pixel ratio cap. */
+  /** Device pixel ratio cap (the resolution scale applies on top). */
   dpr: number;
   /** Monolith box subdivisions (x, y, z). */
   monolithSegments: [number, number, number];
-  /** Terrain grid resolution per side. */
+  /** Terrain grid resolution per side (denser near the stone). */
   terrainSegments: number;
   embers: number;
-  /** Fissure noise octaves (main veins, branches, micro cracks). */
+  /** Fissures read from the baked atlas instead of computed per pixel. */
+  bakedFissures: boolean;
+  /** High only: fissure noise octaves (main veins, branches, hairline crazing). */
   fissureOctaves: 2 | 3;
-  /** Heat-haze distortion: reserved for Phase 4, High only. */
-  haze: boolean;
-  /** Bloom mip levels. */
+  /** Monolith surface lighting per vertex instead of per pixel. */
+  vertexLighting: boolean;
+  /** Fog evaluated per vertex instead of per pixel. */
+  vertexFog: boolean;
+  /** Lava crust, ground detail and bank cracks from small tiling textures. */
+  bakedDetail: boolean;
+  /** Sky gradient per vertex, one smoke layer. */
+  liteSky: boolean;
+  /** Post-processing chain: full (bloom, MSAA), light (cheaper bloom), none (Lite). */
+  post: 'full' | 'light' | 'none';
   bloomLevels: number;
+  /** Bloom's internal resolution, relative to the canvas. */
+  bloomResolution: number;
   /** Multisampling on the main render target. */
   msaa: number;
+  /** Soft emissive halos and glow sprites stand in for bloom (no post chain). */
+  fakeBloom: boolean;
+  /** The frame rate the resolution controller holds (and Lite is capped at). */
+  fps: 60 | 30;
 }
 
 export const TIER_SETTINGS: Record<SceneTier, TierSettings> = {
@@ -31,34 +58,72 @@ export const TIER_SETTINGS: Record<SceneTier, TierSettings> = {
     monolithSegments: [40, 128, 20],
     terrainSegments: 288,
     embers: 2000,
+    bakedFissures: false,
     fissureOctaves: 3,
-    haze: true,
+    vertexLighting: false,
+    vertexFog: false,
+    bakedDetail: false,
+    liteSky: false,
+    post: 'full',
     bloomLevels: 8,
+    bloomResolution: 0.5,
     msaa: 4,
+    fakeBloom: false,
+    fps: 60,
   },
   medium: {
     dpr: 1.5,
     monolithSegments: [20, 64, 10],
     terrainSegments: 160,
     embers: 600,
+    bakedFissures: true,
     fissureOctaves: 2,
-    haze: false,
-    bloomLevels: 6,
+    vertexLighting: false,
+    vertexFog: false,
+    bakedDetail: true,
+    liteSky: false,
+    post: 'light',
+    bloomLevels: 5,
+    bloomResolution: 0.35,
     msaa: 0,
+    fakeBloom: false,
+    fps: 60,
+  },
+  lite: {
+    dpr: 1.25,
+    monolithSegments: [16, 48, 8],
+    terrainSegments: 112,
+    embers: 200,
+    bakedFissures: true,
+    fissureOctaves: 2,
+    vertexLighting: true,
+    vertexFog: true,
+    bakedDetail: true,
+    liteSky: true,
+    post: 'none',
+    bloomLevels: 0,
+    bloomResolution: 0,
+    msaa: 0,
+    fakeBloom: true,
+    fps: 30,
   },
 };
 
-/** Frame-time thresholds (ms) for the check after the first frame (30 warm-up frames, then 2 s sampled): above this, drop one tier. */
-export const DOWNGRADE_FRAME_MS: Record<SceneTier, number> = {
-  high: 1000 / 45,
-  medium: 1000 / 26,
-};
+export const SCENE_TIERS: SceneTier[] = ['lite', 'medium', 'high'];
 
-const TIERS: QualityTier[] = ['off', 'low', 'medium', 'high'];
+/** The baked fissure atlas (scripts/bake-fissures.ts): fetched alongside the scene chunk. */
+export const FISSURE_ATLAS_URL = '/textures/fissures-planes.avif';
 
-export function lowerTier(tier: QualityTier): QualityTier {
-  return TIERS[Math.max(0, TIERS.indexOf(tier) - 1)] ?? 'off';
+export function lowerTier(tier: SceneTier): SceneTier | null {
+  return SCENE_TIERS[SCENE_TIERS.indexOf(tier) - 1] ?? null;
 }
+
+export function higherTier(tier: SceneTier): SceneTier | null {
+  return SCENE_TIERS[SCENE_TIERS.indexOf(tier) + 1] ?? null;
+}
+
+export const isSceneTier = (tier: QualityTier | null | undefined): tier is SceneTier =>
+  tier === 'high' || tier === 'medium' || tier === 'lite';
 
 interface NavigatorHints extends Navigator {
   deviceMemory?: number;
@@ -66,9 +131,9 @@ interface NavigatorHints extends Navigator {
 }
 
 interface GpuInfo {
-  /** WebGL2 (or a WebGPU hardware adapter, which implies it) is available. */
+  /** WebGL2 is available. */
   available: boolean;
-  /** Software rendering, or no usable hardware adapter. */
+  /** Software rendering (SwiftShader, llvmpipe, Microsoft Basic Render Driver…). */
   software: boolean;
   /** Renderer string or WebGPU vendor/architecture, for classification. */
   renderer: string;
@@ -92,10 +157,21 @@ interface WebGpu {
 /** `requestAdapter()` never resolves on some mobile browsers: give it this long. */
 export const WEBGPU_TIMEOUT_MS = 1500;
 
+const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
+/** Discrete GPUs and Apple M-series. */
+const HIGH_GPU =
+  /nvidia|geforce|quadro|\brtx\b|\bgtx\b|radeon\s*(\(tm\)\s*)?(rx|pro|vii|r9)\b|arc\(tm\)\s*a\d{3}|\barc a\d{3}|apple m\d/i;
+/** Strong integrated GPUs and recent flagship phone GPUs. */
+const MEDIUM_GPU =
+  /iris\(r\)\s*xe|iris xe|intel\(r\) arc\(tm\) graphics|radeon\s*(\(tm\)\s*)?\d{3}m|adreno\s*(\(tm\)\s*)?(7\d\d|8\d\d)|mali-g7[1-9]|mali-g7\d\d|mali-g9\d\d|immortalis|xclipse/i;
+
+const touchDevice = () => matchMedia('(pointer: coarse)').matches;
+
 /**
- * Asynchronous GPU check via WebGPU's adapter: it never blocks the main thread,
- * unlike creating a WebGL context. Returns null when WebGPU can't answer (absent,
- * no adapter on desktop Linux, an error, or the timeout), so the WebGL probe runs.
+ * WebGPU's adapter, asynchronously (no main-thread cost). Only decisive
+ * answers are used: a software fallback adapter, NVIDIA, or Apple silicon on
+ * a Mac. Anything else (absent, null, timed out, ambiguous) returns null and
+ * the WebGL renderer string decides.
  */
 async function probeWebGpu(): Promise<GpuInfo | null> {
   const gpu = (navigator as Navigator & { gpu?: WebGpu }).gpu;
@@ -106,17 +182,14 @@ async function probeWebGpu(): Promise<GpuInfo | null> {
       WEBGPU_TIMEOUT_MS,
       'WebGPU adapter request',
     );
-    if (!adapter) {
-      // Desktop Linux Chrome may simply not ship WebGPU yet: let WebGL decide.
-      // On phones, no adapter means an unsupported or blocklisted GPU.
-      const ua = navigator.userAgent;
-      if (/Linux/.test(ua) && !/Android/.test(ua)) return null;
-      return { available: true, software: true, renderer: '(no WebGPU adapter)', source: 'webgpu' };
-    }
+    if (!adapter) return null;
     const info = adapter.info ?? {};
-    const software = Boolean(info.isFallbackAdapter ?? adapter.isFallbackAdapter);
     const renderer = [info.vendor, info.architecture, info.description].filter(Boolean).join(' ');
-    return { available: true, software, renderer, source: 'webgpu' };
+    if (info.isFallbackAdapter ?? adapter.isFallbackAdapter)
+      return { available: true, software: true, renderer, source: 'webgpu' };
+    if (/nvidia/i.test(info.vendor ?? '') || (/apple/i.test(info.vendor ?? '') && !touchDevice()))
+      return { available: true, software: false, renderer, source: 'webgpu' };
+    return null;
   } catch {
     return null;
   }
@@ -141,96 +214,162 @@ function probeWebGl(): GpuInfo {
   }
 }
 
-const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
-/** Old or entry-level mobile GPUs (WebGL renderer strings and WebGPU architectures): poster only. */
-const WEAK_GPU =
-  /mali-[t4]|mali-g(31|51|52)\b|adreno \(tm\) [2-5]\d\d|adreno [2-5]\d\d|adreno-[2-5]|midgard|utgard|powervr|sgx|intel.*gma/i;
-/** Phones, tablets and older integrated laptop GPUs: the lighter scene. */
-const MID_GPU =
-  /mali|adreno|qualcomm|arm|apple gpu|apple a\d|apple|xclipse|samsung|immortalis|maleoon|imagination|intel.*hd graphics/i;
+/** Legacy names from Phase 1–2 still work: low and off both mean the poster. */
+const FORCED: Record<string, QualityTier> = {
+  high: 'high',
+  medium: 'medium',
+  lite: 'lite',
+  poster: 'poster',
+  low: 'poster',
+  off: 'poster',
+};
 
 /** Read a forced tier from `?tier=` for testing and poster capture. */
 export function forcedTier(): QualityTier | null {
   const value = new URLSearchParams(location.search).get('tier');
-  return value && (TIERS as string[]).includes(value) ? (value as QualityTier) : null;
+  return (value && FORCED[value]) || null;
 }
 
 export function prefersReducedMotion(): boolean {
   return matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-/**
- * Device memory in GB, or null when the browser doesn't say (Safari and Firefox
- * never do). Unknown is never treated as low.
- */
-function deviceMemory(): number | null {
-  const value = (navigator as NavigatorHints).deviceMemory;
-  return typeof value === 'number' && value > 0 ? value : null;
+function saveData(): boolean {
+  return (navigator as NavigatorHints).connection?.saveData === true;
 }
 
 /**
- * Logical cores, or null when unknown. Safari caps this value for privacy, so it
- * is never used to rule a device down to Low, only to choose Medium over High.
+ * Cheap, synchronous rules only: forced tier, reduced motion, save-data.
+ * Returns a final tier when these settle it, or null when the GPU decides.
+ * Safe to call before first paint.
  */
-function cores(): number | null {
-  const value = navigator.hardwareConcurrency;
-  return typeof value === 'number' && value > 0 ? value : null;
-}
-
-/**
- * Cheap, synchronous signals only: forced tier, reduced motion, save-data, slow
- * network and (known) very low memory. Returns a final tier when these settle
- * it, or null when the GPU has to be probed. Safe to call before first paint.
- */
-export function detectTierFast(): QualityTier | null {
+export function detectTierFast(): { tier: QualityTier; reason: string } | null {
   const forced = forcedTier();
-  const reduced = prefersReducedMotion();
-  if (forced) return reduced && forced !== 'off' ? 'off' : forced;
-  if (reduced) return 'off';
-
-  const nav = navigator as NavigatorHints;
-  const memory = deviceMemory();
-  const saveData = nav.connection?.saveData === true;
-  const slowNet = /(^|-)2g$/.test(nav.connection?.effectiveType ?? '');
-  if (saveData || slowNet || (memory !== null && memory <= 2)) return 'low';
+  if (prefersReducedMotion()) return { tier: 'poster', reason: 'prefers-reduced-motion' };
+  if (forced) return { tier: forced, reason: 'forced with ?tier=' };
+  if (saveData()) return { tier: 'poster', reason: 'save-data' };
   return null;
 }
 
-/** Whether a scene tier is still possible: decides if the scene chunk is worth prefetching. */
+/** Whether a live scene is still possible: decides if the scene chunk is worth prefetching. */
 export function sceneStillPossible(): boolean {
   const fast = detectTierFast();
-  return fast === null || fast === 'high' || fast === 'medium';
+  return fast === null || isSceneTier(fast.tier);
+}
+
+// ── Session cache ────────────────────────────────────────────────────────
+
+const CACHE_KEY = 'monolith:tier';
+const CACHE_VERSION = 2;
+
+/**
+ * What this tab remembers (sessionStorage), so returning home doesn't probe
+ * again:
+ *   tier     the settled tier
+ *   reason   why (shown in the ?fps overlay)
+ *   ceiling  the highest tier this session may still try: lowered when a
+ *            tier fails, so the scene never upgrades back into it
+ *   upgraded tiers already reached by an upgrade (each only once per session)
+ *   scale    the last resolution scale, to start from
+ *   gpu      the renderer string the decision was based on
+ * Ignored when ?tier= forces a tier, and overridden by reduced motion and
+ * save-data. Dropped when CACHE_VERSION changes or the tab closes.
+ */
+export interface TierCache {
+  v: number;
+  tier: QualityTier;
+  reason: string;
+  ceiling: SceneTier | 'poster';
+  upgraded: SceneTier[];
+  scale: number;
+  gpu: string;
+}
+
+export function readTierCache(): TierCache | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw) as TierCache;
+    if (cache.v !== CACHE_VERSION || !(cache.tier in FORCED)) return null;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
+export function writeTierCache(patch: Partial<Omit<TierCache, 'v'>>) {
+  if (forcedTier()) return;
+  try {
+    const current = readTierCache();
+    const next: TierCache = {
+      v: CACHE_VERSION,
+      tier: 'lite',
+      reason: '',
+      ceiling: 'high',
+      upgraded: [],
+      scale: 1,
+      gpu: '',
+      ...current,
+      ...patch,
+    };
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(next));
+  } catch {
+    // Storage blocked (private mode, quotas): the next visit simply probes again.
+  }
+}
+
+// ── The decision ─────────────────────────────────────────────────────────
+
+/** Tier from a renderer string. Unclassified hardware gets Lite, never the poster. */
+function classify(renderer: string): SceneTier {
+  if (HIGH_GPU.test(renderer)) return 'high';
+  // Apple silicon: "Apple M1" in Chrome; Safari only says "Apple GPU". On a
+  // Mac (no touch) that is M-series or a recent AMD Mac: High. iPhones and
+  // iPads start on Lite and upgrade if they hold the frame budget.
+  if (/apple/i.test(renderer) && !touchDevice()) return 'high';
+  if (MEDIUM_GPU.test(renderer)) return 'medium';
+  return 'lite';
 }
 
 /**
- * The full decision: cheap signals, then the GPU. Uses WebGPU's adapter where
- * available (asynchronous, no main-thread cost; 1.5 s timeout); otherwise
- * creates a WebGL2 context, which can block for tens of milliseconds (far more
- * on software renderers). Call it after first paint, and only on pages that
- * show the scene. Every signal read is recorded for the ?fps overlay.
+ * The full decision: cheap rules, then the session cache, then the GPU.
+ * WebGPU's adapter first (asynchronous; 1.5 s timeout), then a WebGL2 probe,
+ * which can block for tens of milliseconds (far more on software renderers).
+ * Call it after first paint, and only on pages that show the scene. Every
+ * signal read is recorded for the ?fps overlay.
  */
-export async function detectTier(): Promise<QualityTier> {
-  const memory = deviceMemory();
-  const coreCount = cores();
-  const shortSide = Math.min(screen.width, screen.height);
-  const coarse = matchMedia('(pointer: coarse)').matches;
-  setSignal('device memory', memory === null ? 'unknown' : `${memory} GB`);
-  setSignal('cores', coreCount === null ? 'unknown' : String(coreCount));
+export async function detectTier(): Promise<{ tier: QualityTier; reason: string }> {
+  const nav = navigator as NavigatorHints;
+  const coarse = touchDevice();
+  setSignal(
+    'device memory',
+    typeof nav.deviceMemory === 'number' ? `${nav.deviceMemory} GB` : 'unknown',
+  );
+  setSignal(
+    'cores',
+    navigator.hardwareConcurrency ? String(navigator.hardwareConcurrency) : 'unknown',
+  );
   setSignal('dpr', String(window.devicePixelRatio || 1));
   setSignal('screen', `${screen.width}×${screen.height}${coarse ? ' touch' : ''}`);
 
   const fast = detectTierFast();
   if (fast) return fast;
 
+  const cached = readTierCache();
+  if (cached) {
+    setSignal('gpu', `${cached.gpu || '(cached)'} (from this session)`);
+    return { tier: cached.tier, reason: `remembered this session: ${cached.reason}` };
+  }
+
   const gpu = (await probeWebGpu()) ?? probeWebGl();
   setSignal('gpu', `${gpu.source}: ${gpu.renderer || '(not reported)'}`);
-  if (!gpu.available) return 'off';
-  if (gpu.software || WEAK_GPU.test(gpu.renderer)) return 'low';
-
-  // Apple Silicon Macs also report Apple; only treat it as mobile on touch devices.
-  const midGpu = MID_GPU.test(gpu.renderer) && !(/apple/i.test(gpu.renderer) && !coarse);
-  const modestMemory = memory !== null && memory <= 4;
-  const modestCores = coreCount !== null && coreCount <= 4;
-  if (midGpu || coarse || shortSide < 768 || modestMemory || modestCores) return 'medium';
-  return 'high';
+  let result: { tier: QualityTier; reason: string };
+  if (!gpu.available) result = { tier: 'poster', reason: 'no WebGL2' };
+  else if (gpu.software) result = { tier: 'poster', reason: `software renderer (${gpu.renderer})` };
+  else {
+    const tier = classify(gpu.renderer);
+    result = { tier, reason: `${gpu.renderer || 'unclassified GPU'} → ${tier}` };
+  }
+  writeTierCache({ tier: result.tier, reason: result.reason, gpu: gpu.renderer });
+  return result;
 }

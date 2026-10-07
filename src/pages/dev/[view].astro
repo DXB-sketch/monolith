@@ -3,10 +3,12 @@
  * Dev-only scene viewer, used by scripts/render-posters.mjs.
  * Only generated under `astro dev`; production builds emit no /dev pages.
  *
- *   /dev/scene?tier=high|medium   live scene, no UI
+ *   /dev/scene?tier=high|medium|lite   live scene, no UI (every layer, fixed tier)
  *   /dev/scene?capture=12         frozen at t = 12s, drawing buffer preserved
  *   &progress=0.36                story progress (default story map), with capture
  *   &hide=lava,embers&nopost      isolate objects, skip post-processing
+ *   &scale=0.5                    hold a resolution scale (default 1)
+ * window.__gpu() returns per-layer GPU milliseconds (EXT_disjoint_timer_query_webgl2).
  */
 import '../../styles/global.css';
 
@@ -29,7 +31,8 @@ export function getStaticPaths() {
       import { createScene } from '../../scene/index';
 
       const params = new URLSearchParams(location.search);
-      const tier = params.get('tier') === 'medium' ? 'medium' : 'high';
+      const requested = params.get('tier');
+      const tier = requested === 'medium' || requested === 'lite' ? requested : 'high';
       const captureAt = params.get('capture');
       const pointer = params.get('pointer')?.split(',').map(Number);
       const canvas = document.querySelector<HTMLCanvasElement>('[data-dev-canvas]')!;
@@ -39,6 +42,9 @@ export function getStaticPaths() {
         tier,
         gpuTiming: true,
         fixedTier: true,
+        fixedScale: Number(params.get('scale') ?? 1),
+        onIssue: (message) => console.warn('[scene]', message),
+        onPhase: (name, detail) => console.info('[scene]', name, detail ?? ''),
         debugHide: params.get('hide')?.split(','),
         debugNoPost: params.has('nopost'),
         capture: captureAt

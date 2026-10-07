@@ -3,6 +3,7 @@ attribute vec4 aSeed;
 
 uniform float uTime;
 uniform float uDensity;
+uniform float uFade;
 uniform float uPointScale;
 uniform vec2 uWind;
 
@@ -25,7 +26,7 @@ void main() {
 
   float alive = step(aSeed.w, uDensity);
   float flicker = 0.55 + 0.45 * sin(uTime * (7.0 + aSeed.x * 13.0) + aSeed.z * 50.0);
-  vAlpha = alive * smoothstep(0.0, 0.05, life) * (1.0 - smoothstep(0.4, 1.0, life)) * flicker;
+  vAlpha = uFade * alive * smoothstep(0.0, 0.05, life) * (1.0 - smoothstep(0.4, 1.0, life)) * flicker;
   vLife = life;
 
   float size = (0.035 + aSeed.z * 0.045) * uPointScale / max(-mv.z, 0.1);

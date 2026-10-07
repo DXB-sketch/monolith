@@ -16,6 +16,7 @@ uniform vec3 uSunDir;      // toward the afterglow, behind the monolith
 uniform float uTime;
 uniform float uFogDensity;
 uniform float uGlow;       // overall horizon glow strength
+uniform float uLavaGlow;   // 0..1: the lava layer's light (fades in with it)
 
 // Sky radiance for a view direction.
 vec3 skyColor(vec3 dir) {
@@ -57,12 +58,18 @@ vec3 safeHdr(vec3 c) {
 }
 
 // Exponential height fog that blends toward the sky colour in the view direction.
-vec3 applyFog(vec3 color, vec3 worldPos) {
+// xyz: fog colour, w: amount. Split out so Lite can evaluate it per vertex.
+vec4 fogTerm(vec3 worldPos) {
   vec3 toFrag = worldPos - cameraPosition;
   float dist = length(toFrag);
   vec3 dir = toFrag / max(dist, 1e-4);
   float heightFalloff = exp(-max(worldPos.y, 0.0) * 0.012);
   float amount = 1.0 - exp(-dist * uFogDensity * heightFalloff);
   vec3 fogDir = normalize(vec3(dir.x, max(dir.y, 0.0) * 0.6 + 0.02, dir.z));
-  return mix(color, skyColor(fogDir), clamp(amount, 0.0, 0.9));
+  return vec4(skyColor(fogDir), clamp(amount, 0.0, 0.9));
+}
+
+vec3 applyFog(vec3 color, vec3 worldPos) {
+  vec4 fog = fogTerm(worldPos);
+  return mix(color, fog.rgb, fog.a);
 }

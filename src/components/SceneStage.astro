@@ -43,7 +43,9 @@
     />
   </picture>
   <canvas class="stage__canvas" data-scene-canvas tabindex="-1"></canvas>
-  <!-- Chapter 04's wash, drawn here only when the scene runs without post-processing. -->
+  <!-- Lite has no post-processing chain: its grain and vignette are CSS, free on the GPU. -->
+  <div class="stage__look"></div>
+  <!-- Chapter 04's wash, drawn here whenever the scene runs without post-processing. -->
   <div class="stage__wash" data-scene-wash></div>
 </div>
 
@@ -81,6 +83,34 @@
     opacity: 0;
   }
 
+  /* The vignette (as the post chain's: darkening from about 30% out) and a
+     fine static grain, over the live canvas on Lite only. */
+  .stage__look {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: radial-gradient(
+      ellipse 75% 75% at 50% 50%,
+      transparent 40%,
+      rgb(var(--basalt-rgb) / 0.55) 100%
+    );
+    transition: opacity var(--dur-fade) var(--ease-out);
+  }
+
+  .stage__look::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url('/textures/grain.png') repeat;
+    background-size: 128px 128px;
+    mix-blend-mode: overlay;
+    opacity: 0.1;
+  }
+
+  :global(html[data-tier='lite']) .stage:global(.is-live) .stage__look {
+    opacity: 1;
+  }
+
   .stage__canvas {
     opacity: 0;
     outline: none;
@@ -97,9 +127,9 @@
     opacity: 0.32;
   }
 
-  /* Low tier: no WebGL, a gentle scroll-linked drift on the poster in pure CSS. */
+  /* Poster tier: no WebGL, a gentle scroll-linked drift on the poster in pure CSS. */
   @supports (animation-timeline: scroll()) {
-    :global(html[data-tier='low']) .stage__poster {
+    :global(html[data-tier='poster']) .stage__poster {
       animation: poster-drift linear both;
       animation-timeline: scroll(root block);
       animation-range: 0 100vh;

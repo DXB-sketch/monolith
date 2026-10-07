@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "astro": "astro",
     "posters": "node scripts/render-posters.mjs",
+    "bake": "tsx scripts/bake-fissures.ts",
     "check:camera": "tsx scripts/check-camera-path.ts"
   },
   "dependencies": {
