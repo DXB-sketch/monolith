@@ -6,7 +6,7 @@
  * - Tracks the active chapter for the HUD (aria-current), and drives the
  *   decorative core temperature readout.
  * - Handles chapter links: smooth scroll to the chapter, then focus its heading.
- * - Reveals content as it enters, without ever hiding what is already in view.
+ * - Reveals content as it enters (src/lib/reveal.ts, shared with the content pages).
  *
  * The story mounts as soon as its chunk is ready and switches mode in place as
  * the tier settles or changes, without duplicating triggers, Lenis instances or
@@ -18,6 +18,9 @@
  */
 import { blendChapterState, CHAPTER_STATES, createChapterState } from '../scene/chapters';
 import { DEFAULT_STORY_MAP, storyPosition, type StoryMap } from '../scene/story-map';
+import { mountReveals, type RevealController } from './reveal';
+
+export { triggerCount } from './reveal';
 import {
   createSmoothScroll,
   gsap,
@@ -226,15 +229,6 @@ export async function mountStory(
   };
   document.addEventListener('click', onClick, true);
 
-  // Keyboard users can tab into content that hasn't been revealed yet: finish
-  // its reveal at once so focus never lands on something invisible.
-  const onFocusIn = (event: FocusEvent) => {
-    const block = (event.target as Element).closest?.('[data-reveal]');
-    if (!block) return;
-    gsap.getTweensOf(block).forEach((tween) => tween.progress(1));
-  };
-  root.addEventListener('focusin', onFocusIn);
-
   const ctx = gsap.context(() => {
     // Progress through the whole story drives the camera and scene state.
     const progress = ScrollTrigger.create({
@@ -282,86 +276,24 @@ export async function mountStory(
   // Chapter anchors measured before the fonts arrive can be off: measure again.
   document.fonts?.ready.then(requestRefresh);
 
-  // ── Reveals: set up once, when the tier has settled ────────────────────
-  // Hidden states exist only once JS has marked the page motion-ready, and only
-  // for content that is still below the viewport at that moment.
-  const splits: { revert(): void }[] = [];
-  /** Line reveals are created in SplitText's onSplit callback, outside the context: track them. */
-  const lineTweens = new Set<gsap.core.Tween>();
-  const revealTweens = new Set<gsap.core.Tween>();
+  // ── Reveals (src/lib/reveal.ts): set up once, when the tier has settled ──
+  let reveals: RevealController | null = null;
   let revealsSetUp = false;
 
   const setupReveals = async (revealMode: StoryMode) => {
     if (revealsSetUp || revealMode === 'pending' || revealMode === 'static') return;
     revealsSetUp = true;
-    const SplitText = revealMode === 'full' ? (await import('gsap/SplitText')).SplitText : null;
-    if (disposed || mode === 'static') return;
-    if (SplitText) gsap.registerPlugin(SplitText);
-    html.classList.add('motion-ready');
-    const full = revealMode === 'full';
-
-    ctx.add(() => {
-      const threshold = window.innerHeight * 0.9;
-      root.querySelectorAll<HTMLElement>('[data-reveal]').forEach((el) => {
-        if (el.getBoundingClientRect().top < threshold) return;
-        const trigger = { trigger: el, start: 'top 88%', once: true };
-
-        if (SplitText && el.dataset.reveal === 'lines') {
-          // Lines rise from a mask, a light blur clearing. aria: 'auto' labels the
-          // heading with its full text and hides the split pieces from AT.
-          // autoSplit re-splits on resize and font load so lines re-wrap.
-          const split = SplitText.create(el, {
-            type: 'lines',
-            mask: 'lines',
-            aria: 'auto',
-            autoSplit: true,
-            onSplit: (self) => {
-              const tween = gsap.from(self.lines, {
-                yPercent: 105,
-                opacity: 0,
-                filter: 'blur(6px)',
-                duration: 1.5,
-                ease: 'expo.out',
-                stagger: 0.1,
-                scrollTrigger: trigger,
-              });
-              lineTweens.add(tween);
-              // Returned so SplitText carries its progress over when it re-splits.
-              return tween;
-            },
-          });
-          splits.push(split);
-          return;
-        }
-
-        revealTweens.add(
-          gsap.from(el, {
-            // Opacity only: visibility:hidden would drop links out of the tab order.
-            opacity: 0,
-            y: full ? 28 : 0,
-            duration: full ? 1.3 : 0.8,
-            ease: full ? 'expo.out' : 'power2.out',
-            scrollTrigger: trigger,
-          }),
-        );
-      });
-    });
+    const created = await mountReveals(root, revealMode === 'full' ? 'full' : 'lite');
+    if (disposed || mode === 'static') {
+      created.destroy();
+      return;
+    }
+    reveals = created;
     refresh();
   };
 
   /** Static mode: everything visible now, no animation left behind. */
-  const finishReveals = () => {
-    for (const tween of [...lineTweens, ...revealTweens]) {
-      tween.progress(1);
-      tween.scrollTrigger?.kill();
-      tween.kill();
-    }
-    lineTweens.clear();
-    revealTweens.clear();
-    splits.forEach((split) => split.revert());
-    splits.length = 0;
-    html.classList.remove('motion-ready');
-  };
+  const finishReveals = () => reveals?.finish();
 
   const setMode = (next: StoryMode) => {
     if (disposed || next === mode) return;
@@ -391,7 +323,7 @@ export async function mountStory(
       mode: () => mode,
       lenis: () => (smooth ? 1 : 0),
       lenisRoots: () => document.querySelectorAll('html.lenis').length,
-      splits: () => splits.length,
+      pendingReveals: () => reveals?.pending ?? 0,
     };
   }
 
@@ -405,16 +337,11 @@ export async function mountStory(
       disposed = true;
       clearTimeout(refreshTimer);
       document.removeEventListener('click', onClick, true);
-      root.removeEventListener('focusin', onFocusIn);
       hud?.removeAttribute('data-washed');
-      lineTweens.forEach((tween) => {
-        tween.scrollTrigger?.kill();
-        tween.kill();
-      });
-      splits.forEach((split) => split.revert());
+      // Only the story's own triggers: its context, and its reveals'.
+      reveals?.destroy();
+      reveals = null;
       ctx.revert();
-      // The story is the only ScrollTrigger user on the site: leave none behind.
-      ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
       smoothToken++;
       smooth?.destroy();
       smooth = null;

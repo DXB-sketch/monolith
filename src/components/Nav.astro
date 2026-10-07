@@ -2,7 +2,9 @@
 import { NAV, CTA } from '../lib/site';
 
 const path = Astro.url.pathname.replace(/\/$/, '') || '/';
-const isCurrent = (href: string) => path === href || path.startsWith(`${href}/`);
+/** The page itself is "page"; a page inside its section (a case study under Work) is "true". */
+const current = (href: string) =>
+  path === href ? 'page' : path.startsWith(`${href}/`) ? 'true' : undefined;
 ---
 
 <header class="site-header">
@@ -14,22 +16,14 @@ const isCurrent = (href: string) => path === href || path.startsWith(`${href}/`)
     <ul class="nav__links" id="nav-menu" data-nav-menu>
       {NAV.map((item) => (
         <li>
-          <a
-            class="nav__link"
-            href={item.href}
-            aria-current={isCurrent(item.href) ? 'page' : undefined}
-          >
+          <a class="nav__link" href={item.href} aria-current={current(item.href)}>
             {item.label}
           </a>
         </li>
       ))}
     </ul>
 
-    <a
-      class="btn btn--primary nav__cta"
-      href={CTA.href}
-      aria-current={isCurrent(CTA.href) ? 'page' : undefined}
-    >
+    <a class="btn btn--primary nav__cta" href={CTA.href} aria-current={current(CTA.href)}>
       {CTA.label}
     </a>
 
@@ -164,11 +158,11 @@ const isCurrent = (href: string) => path === href || path.startsWith(`${href}/`)
   }
 
   .nav__link:hover,
-  .nav__link[aria-current='page'] {
+  .nav__link[aria-current] {
     color: var(--bone);
   }
 
-  .nav__link[aria-current='page'] {
+  .nav__link[aria-current] {
     text-decoration: underline;
     text-decoration-color: var(--lava);
     text-underline-offset: 0.5em;
@@ -177,6 +171,13 @@ const isCurrent = (href: string) => path === href || path.startsWith(`${href}/`)
   .nav__cta {
     flex: none;
     --btn-pad-x: 1.25em;
+  }
+
+  /* On the contact page the button marks where you are. */
+  .nav__cta[aria-current] {
+    box-shadow:
+      0 0 0 2px var(--basalt),
+      0 0 0 3px var(--lava-hot);
   }
 
   .nav__toggle {

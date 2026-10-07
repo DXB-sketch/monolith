@@ -1,5 +1,5 @@
 ---
-import type { Project } from '../lib/site';
+import { CONCEPT_NOTE, hostOf, type Project } from '../lib/work';
 
 interface Props {
   project: Project;
@@ -17,7 +17,7 @@ const titleId = `project-${project.slug}`;
 <article class="face-card" aria-labelledby={titleId}>
   <div class="face-card__meta">
     <p class="label">{project.clientType}</p>
-    {project.concept && <p class="face-card__badge label">Concept</p>}
+    {project.isConcept && <p class="face-card__badge label">Concept</p>}
   </div>
 
   <Heading
@@ -30,11 +30,12 @@ const titleId = `project-${project.slug}`;
   </Heading>
   <p class="face-card__client">{project.client}</p>
   <p class="face-card__summary">{project.summary}</p>
+  {project.isConcept && <p class="face-card__note">{CONCEPT_NOTE}</p>}
 
   <ul class="face-card__links">
     <li>
       <a class="btn btn--ghost" href={`/work/${project.slug}`}>
-        {project.concept ? 'View the concept' : 'Read the case study'}
+        {project.isConcept ? 'View the concept' : 'Read the case study'}
         <span class="visually-hidden">: {project.title}</span>
         <span class="btn__arrow" aria-hidden="true">
           →
@@ -43,8 +44,8 @@ const titleId = `project-${project.slug}`;
     </li>
     {project.liveUrl && (
       <li>
-        <a class="face-card__live" href={project.liveUrl} rel="noopener" target="_blank">
-          Visit the live site<span class="visually-hidden"> (opens in a new tab)</span>
+        <a class="face-card__live" href={project.liveUrl} rel="noopener">
+          Visit the live site<span class="visually-hidden">: {hostOf(project.liveUrl)}</span>
           <span aria-hidden="true">↗</span>
         </a>
       </li>
@@ -93,6 +94,12 @@ const titleId = `project-${project.slug}`;
 
   .face-card__summary {
     max-width: var(--measure);
+  }
+
+  .face-card__note {
+    max-width: var(--measure);
+    font-size: var(--step--1);
+    color: var(--ash);
   }
 
   .face-card__links {

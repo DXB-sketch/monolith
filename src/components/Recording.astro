@@ -1,0 +1,144 @@
+---
+/**
+ * A screen recording: muted, looping, inline, never preloaded. It plays only
+ * while in view. With reduced motion it never starts by itself: the poster
+ * shows with a play button (and the native controls). Without JS, the native
+ * controls. Every recording carries a text description.
+ */
+import { getImage } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+
+interface Props {
+  src: string;
+  poster: ImageMetadata;
+  description: string;
+}
+
+const { src, poster, description } = Astro.props;
+const posterImage = await getImage({ src: poster, format: 'webp', width: 1600 });
+const id = `rec-${Math.random().toString(36).slice(2, 8)}`;
+---
+
+<figure class="recording" data-recording>
+  <div class="recording__frame">
+    <video
+      class="recording__video"
+      muted
+      loop
+      playsinline
+      preload="none"
+      controls
+      poster={posterImage.src}
+      width={poster.width}
+      height={poster.height}
+      aria-describedby={id}
+    >
+      <source src={src} type="video/mp4" />
+    </video>
+    <button class="recording__play" type="button" hidden data-recording-play>
+      <span aria-hidden="true">▶</span>
+      <span>Play the recording</span>
+    </button>
+  </div>
+  <figcaption id={id} class="recording__caption">
+    {description}
+  </figcaption>
+</figure>
+
+<script>
+  /**
+   * Plays recordings only while they're on screen. Reduced motion: no autoplay,
+   * a play button over the poster instead (the native controls stay).
+   */
+  function initRecordings() {
+    const figures = document.querySelectorAll<HTMLElement>('[data-recording]');
+    if (!figures.length) return;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const observer = reduced
+      ? null
+      : new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const video = entry.target as HTMLVideoElement;
+              if (entry.isIntersecting) void video.play().catch(() => {});
+              else video.pause();
+            }
+          },
+          { threshold: 0.4 },
+        );
+
+    figures.forEach((figure) => {
+      const video = figure.querySelector<HTMLVideoElement>('video')!;
+      const play = figure.querySelector<HTMLButtonElement>('[data-recording-play]')!;
+      if (observer) {
+        // Ambient: no controls in the way, plays in view.
+        video.controls = false;
+        observer.observe(video);
+      } else {
+        play.hidden = false;
+        play.addEventListener('click', () => {
+          play.hidden = true;
+          void video.play();
+          video.focus();
+        });
+      }
+    });
+
+    document.addEventListener('astro:before-swap', () => observer?.disconnect(), { once: true });
+  }
+
+  document.addEventListener('astro:page-load', initRecordings);
+</script>
+
+<style>
+  .recording {
+    display: grid;
+    gap: var(--space-xs);
+    margin: 0;
+  }
+
+  .recording__frame {
+    position: relative;
+    border: var(--hairline);
+    border-radius: var(--radius-panel);
+    overflow: hidden;
+    background: var(--obsidian);
+  }
+
+  .recording__video {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .recording__play {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    display: inline-flex;
+    gap: 0.6em;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.85em 1.6em;
+    border: 1px solid var(--obsidian-edge);
+    border-radius: var(--radius-pill);
+    background: rgb(var(--basalt-rgb) / 0.85);
+    color: var(--bone);
+    font: var(--weight-strong) var(--step--1) / 1.1 var(--font-sans);
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+  }
+
+  .recording__play:hover {
+    border-color: var(--lava);
+  }
+
+  .recording__play[hidden] {
+    display: none;
+  }
+
+  .recording__caption {
+    max-width: var(--measure);
+    font-size: var(--step--1);
+    color: var(--ash);
+  }
+</style>

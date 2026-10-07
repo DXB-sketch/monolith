@@ -1,0 +1,53 @@
+---
+/**
+ * The in-world confirmation, shown after a successful send: inline on /contact
+ * (with JS) and as /contact/thanks (without). It says what happens next and
+ * offers a call.
+ */
+import BookCall from './BookCall.astro';
+
+interface Props {
+  /** In the form page it starts hidden until the send succeeds. */
+  hidden?: boolean;
+  headingLevel?: 1 | 2;
+}
+
+const { hidden = false, headingLevel = 2 } = Astro.props;
+const Heading = `h${headingLevel}` as 'h1' | 'h2';
+---
+
+<div class="success" data-brief-success hidden={hidden}>
+  <p class="label success__eyebrow">Sent</p>
+  <Heading class="display-2 success__title" tabindex="-1" data-brief-success-heading>
+    Message received. <em>The stone is listening.</em>
+  </Heading>
+  <p class="lead">
+    Thanks for the brief. I read every one myself and reply within [REPLY TIME TO BE SUPPLIED]. If
+    it’s urgent, book a call below.
+  </p>
+  <BookCall headingLevel={3} />
+</div>
+
+<style>
+  .success {
+    display: grid;
+    gap: var(--space-m);
+    justify-items: start;
+  }
+
+  .success[hidden] {
+    display: none;
+  }
+
+  .success__eyebrow {
+    color: var(--lava);
+  }
+
+  .success__title {
+    max-width: 16ch;
+  }
+
+  .success__title:focus {
+    outline: none;
+  }
+</style>

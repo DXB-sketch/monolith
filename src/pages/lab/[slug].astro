@@ -1,24 +1,248 @@
 ---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import { Picture } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import PageIntro from '../../components/PageIntro.astro';
-import Section from '../../components/Section.astro';
-import { LAB, type LabEntry } from '../../lib/site';
+import NextStep from '../../components/NextStep.astro';
+import { isDemoKey } from '../../lab/demos';
+import still from '../../assets/lab/light-through-stone.png';
 
-export function getStaticPaths() {
-  return LAB.map((entry) => ({ params: { slug: entry.slug }, props: { entry } }));
+export async function getStaticPaths() {
+  const entries = await getCollection('lab');
+  return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
 }
 
 interface Props {
-  entry: LabEntry;
+  entry: CollectionEntry<'lab'>;
 }
 
 const { entry } = Astro.props;
+const { Content } = await render(entry);
+const demo = isDemoKey(entry.data.demo) ? entry.data.demo : null;
+const dateFormat = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
 ---
 
-<BaseLayout title={entry.title} description={entry.summary}>
-  <PageIntro eyebrow="Lab · Experiment" title={entry.title} lead={entry.summary} />
-  <Section title="Write-up">
-    <p>[WRITE-UP TO BE SUPPLIED]</p>
-    <a href="/lab">Back to the Lab</a>
-  </Section>
+<BaseLayout footerCta={false} title={entry.data.title} description={entry.data.summary}>
+  <header class="lab-hero">
+    <div class="container lab-hero__inner">
+      <p class="label">
+        <a href="/lab">Lab</a>
+        <span aria-hidden="true"> / </span>
+        <time datetime={entry.data.date.toISOString().slice(0, 10)}>
+          {dateFormat.format(entry.data.date)}
+        </time>
+      </p>
+      <h1 class="display-2">{entry.data.title}</h1>
+      <p class="lead">{entry.data.summary}</p>
+    </div>
+  </header>
+
+  {demo && (
+    <section class="demo" aria-labelledby="demo-title">
+      <div class="container">
+        <h2 id="demo-title" class="visually-hidden">
+          Interactive demo
+        </h2>
+        <div class="demo__stage" data-demo={demo}>
+          {/* The still: shown with reduced motion, on the poster tier, without WebGL2 or JS. */}
+          <Picture
+            class="demo__still"
+            src={still}
+            alt="The fissure shader: a few glowing magma veins branching across dark obsidian."
+            formats={['avif', 'webp']}
+            widths={[640, 1280, 1700]}
+            sizes="(min-width: 90rem) 84rem, 94vw"
+            loading="eager"
+          />
+          <canvas class="demo__canvas" aria-hidden="true" hidden />
+        </div>
+        <div class="demo__controls" data-demo-controls hidden>
+          <label class="demo__control">
+            <span class="label">Heat</span>
+            <input type="range" min="0" max="1.5" step="0.05" value="0.3" data-demo-heat />
+          </label>
+          <label class="demo__control">
+            <span class="label">Pulse speed</span>
+            <input type="range" min="0" max="3" step="0.1" value="1" data-demo-speed />
+          </label>
+        </div>
+        <p class="demo__note" data-demo-note>
+          A still from the live shader. The interactive version runs where WebGL2 is available and
+          motion isn’t reduced.
+        </p>
+      </div>
+    </section>
+  )}
+
+  <article class="lab-body">
+    <div class="container lab-body__inner prose">
+      <Content />
+    </div>
+  </article>
+
+  <NextStep
+    title="Want something like this"
+    accent="on your site?"
+    text="The Lab is where ideas get tested. If one of them suits your business, tell me about it."
+  >
+    <a class="btn btn--ghost" href="/lab">
+      Back to the Lab
+    </a>
+  </NextStep>
 </BaseLayout>
+
+<script>
+  import { DEMOS, isDemoKey } from '../../lab/demos';
+
+  /** Swap the still for the live demo where it can run, and wire its controls. */
+  async function initDemo() {
+    const stage = document.querySelector<HTMLElement>('[data-demo]');
+    const key = stage?.dataset.demo;
+    if (!stage || !isDemoKey(key)) return;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const poster = document.documentElement.dataset.tier === 'poster';
+    if (reduced || poster) return;
+
+    const { startDemo } = await DEMOS[key]();
+    const canvas = stage.querySelector<HTMLCanvasElement>('canvas')!;
+    canvas.hidden = false;
+    const demo = startDemo(canvas);
+    if (!demo) {
+      canvas.hidden = true;
+      return;
+    }
+    stage.classList.add('is-live');
+    const controls = document.querySelector<HTMLElement>('[data-demo-controls]')!;
+    controls.hidden = false;
+    document.querySelector<HTMLElement>('[data-demo-note]')!.textContent =
+      'Live: the same fissure function the monolith runs. Drag the sliders to change it.';
+    const heat = controls.querySelector<HTMLInputElement>('[data-demo-heat]')!;
+    const speed = controls.querySelector<HTMLInputElement>('[data-demo-speed]')!;
+    heat.addEventListener('input', () => demo.setHeat(Number(heat.value)));
+    speed.addEventListener('input', () => demo.setSpeed(Number(speed.value)));
+    document.addEventListener('astro:before-swap', () => demo.destroy(), { once: true });
+  }
+
+  document.addEventListener('astro:page-load', () => void initDemo());
+</script>
+
+<style>
+  .lab-hero {
+    position: relative;
+    padding-block: calc(var(--nav-height) + var(--space-3xl)) var(--space-xl);
+  }
+
+  .lab-hero__inner {
+    display: grid;
+    gap: var(--space-m);
+    justify-items: start;
+  }
+
+  .lab-hero__inner a {
+    color: var(--ash);
+  }
+
+  .demo {
+    position: relative;
+    padding-bottom: var(--space-xl);
+  }
+
+  .demo__stage {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    overflow: hidden;
+    background: var(--obsidian);
+  }
+
+  .demo__stage :global(img),
+  .demo__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .demo__canvas[hidden] {
+    display: none;
+  }
+
+  .demo__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-m) var(--space-xl);
+    margin-top: var(--space-m);
+  }
+
+  .demo__controls[hidden] {
+    display: none;
+  }
+
+  .demo__control {
+    display: grid;
+    gap: var(--space-2xs);
+    min-width: min(100%, 16rem);
+  }
+
+  .demo__control input {
+    width: 100%;
+    min-height: 44px;
+    accent-color: var(--lava);
+  }
+
+  .demo__note {
+    margin-top: var(--space-s);
+    font-size: var(--step--1);
+    color: var(--ash);
+  }
+
+  .lab-body {
+    position: relative;
+    padding-block: var(--space-xl);
+  }
+
+  .prose {
+    display: grid;
+    gap: var(--space-m);
+    max-width: calc(var(--measure) + 2 * var(--gutter));
+  }
+
+  .prose :global(h2) {
+    margin-top: var(--space-l);
+    font-size: var(--step-2);
+    font-weight: var(--weight-body);
+    color: var(--bone);
+  }
+
+  .prose :global(p),
+  .prose :global(li) {
+    color: var(--ash-soft);
+  }
+
+  .prose :global(ul) {
+    display: grid;
+    gap: var(--space-xs);
+    padding-left: 1.2em;
+  }
+
+  .prose :global(li::marker) {
+    color: var(--lava);
+  }
+
+  .prose :global(strong) {
+    color: var(--bone);
+    font-weight: var(--weight-strong);
+  }
+
+  .prose :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: var(--lava-hot);
+  }
+</style>

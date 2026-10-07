@@ -1,40 +1,192 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageIntro from '../components/PageIntro.astro';
-import Section from '../components/Section.astro';
-import { SITE, CTA } from '../lib/site';
+import NextStep from '../components/NextStep.astro';
+import { SITE } from '../lib/site';
 ---
 
 <BaseLayout
+  footerCta={false}
   title="About"
-  description="Monolith is a one-person web studio in Wamuran, at the foot of the Glasshouse Mountains."
+  description="Monolith is a one-person web studio in Wamuran, at the foot of the Glasshouse Mountains: you talk to the person doing the work, start to finish."
 >
   <PageIntro
     eyebrow="About"
     title="One person,"
     accent="start to finish."
-    lead="You talk to the maker, not an account manager."
+    lead="Monolith is a studio of one. You talk to the person designing and building your site, not an account manager."
   />
 
-  <Section title={`Hi, I’m ${SITE.founder}`}>
-    <p>[FOUNDER PHOTO AND BIO TO BE SUPPLIED]</p>
-  </Section>
+  <section class="about" aria-labelledby="founder-title">
+    <div class="container about__grid">
+      <figure class="about__photo" data-reveal>
+        <div class="about__photo-frame" role="img" aria-label={`Photo of ${SITE.founder}`}>
+          <span class="label">[FOUNDER PHOTO TO BE SUPPLIED]</span>
+        </div>
+      </figure>
+      <div class="about__text" data-reveal>
+        <h2 id="founder-title" class="heading">
+          Hi, I’m {SITE.founder}.
+        </h2>
+        <p>[FOUNDER BIO TO BE SUPPLIED]</p>
+      </div>
+    </div>
+  </section>
 
-  <Section title="How I work">
-    <p>
-      Clubs, venues, cafés, makers, musicians and local brands usually choose between a cheap
-      template and nothing. I make sites that feel like they came from a top international studio,
-      while staying fast, accessible and easy to update.
-    </p>
-  </Section>
+  <section class="block" aria-labelledby="studio-title">
+    <div class="container block__inner" data-reveal>
+      <h2 id="studio-title" class="heading">
+        What a one-person studio means for you
+      </h2>
+      <ul class="points">
+        <li>
+          <strong>You talk to the maker.</strong> The person you explain your business to is the
+          person who designs and builds the site. Nothing gets lost in a handover.
+        </li>
+        <li>
+          <strong>One standard, start to finish.</strong> The same hands set the type, write the
+          code and test it on a phone with a screen reader.
+        </li>
+        <li>
+          <strong>Honest about scope.</strong> I take on work I can do properly, and I’ll tell you
+          plainly if a package or a feature isn’t the right fit.
+        </li>
+      </ul>
+    </div>
+  </section>
 
-  <Section title="Where I am">
-    <p>
-      {SITE.location}, at the foot of the Glasshouse Mountains. I work with businesses across
-      Moreton Bay, the Sunshine Coast and Brisbane.
-    </p>
-    <a class="btn btn--primary" href={CTA.href}>
-      {CTA.label}
-    </a>
-  </Section>
+  <section class="block" aria-labelledby="approach-title">
+    <div class="container block__inner">
+      <h2 id="approach-title" class="heading" data-reveal>
+        How I work
+      </h2>
+      <div class="approach">
+        <div class="approach__item" data-reveal>
+          <h3 class="subheading">Craft</h3>
+          <p>
+            Clubs, venues, cafés, makers, musicians and local brands usually choose between a cheap
+            template and nothing. I make sites that feel like they came from a top international
+            studio: considered type, real motion, details that make people stay.
+          </p>
+        </div>
+        <div class="approach__item" data-reveal>
+          <h3 class="subheading">Performance</h3>
+          <p>
+            Showpiece sites are often slow. Mine are built to load fast on an ordinary phone on a
+            mobile connection, because that’s where most of your visitors are.
+          </p>
+        </div>
+        <div class="approach__item" data-reveal>
+          <h3 class="subheading">Accessibility</h3>
+          <p>
+            Every site works with a keyboard, a screen reader and reduced motion, with readable
+            contrast. It’s part of the build, not an extra.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="place-title">
+    <div class="container block__inner" data-reveal>
+      <h2 id="place-title" class="heading">
+        Where I am
+      </h2>
+      <p class="block__text">
+        I’m based in {SITE.location.replace(', Queensland', '')}, at the foot of the Glasshouse
+        Mountains. I work with businesses and organisations across South East Queensland (Moreton
+        Bay, the Sunshine Coast and Brisbane) and beyond.
+      </p>
+      <p class="label">{SITE.coordinates}</p>
+    </div>
+  </section>
+
+  <NextStep title="Let’s talk about" accent="your project." />
 </BaseLayout>
+
+<style>
+  .about {
+    position: relative;
+    padding-bottom: var(--space-xl);
+  }
+
+  .about__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: var(--space-xl);
+    align-items: center;
+  }
+
+  .about__photo {
+    margin: 0;
+  }
+
+  .about__photo-frame {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 5;
+    max-width: 26rem;
+    padding: var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+    text-align: center;
+  }
+
+  .about__text {
+    display: grid;
+    gap: var(--space-m);
+    max-width: var(--measure);
+  }
+
+  .block {
+    position: relative;
+    padding-block: var(--space-xl);
+  }
+
+  .block__inner {
+    display: grid;
+    gap: var(--space-l);
+  }
+
+  .block__text {
+    max-width: var(--measure);
+    font-size: var(--step-1);
+    color: var(--ash-soft);
+  }
+
+  .points {
+    display: grid;
+    gap: var(--space-m);
+    max-width: var(--measure);
+    margin: 0;
+    padding-left: 1.2em;
+  }
+
+  .points li::marker {
+    color: var(--lava);
+  }
+
+  .points strong {
+    color: var(--bone);
+    font-weight: var(--weight-strong);
+  }
+
+  .approach {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: var(--space-s);
+  }
+
+  .approach__item {
+    display: grid;
+    align-content: start;
+    gap: var(--space-s);
+    padding: var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+  }
+</style>

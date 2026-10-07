@@ -41,6 +41,7 @@ import {
 } from '../scene/quality';
 import type { SceneHandle, StoryMap } from '../scene/index';
 import type { StoryBridge, StoryController, StoryMode } from './story';
+import type { RevealController } from './reveal';
 
 /** Upper bounds for each boot step, so no path can hang. */
 const TIER_TIMEOUT_MS = 4000;
@@ -458,6 +459,7 @@ async function mountStory() {
       return;
     }
     story = controller;
+    countTriggers ??= mod.triggerCount;
     mark('story mounted', controller.mode);
     // The tier may have settled while the story was mounting.
     controller.setMode(storyMode());
@@ -474,6 +476,49 @@ function unmountStory() {
   storyRoot = null;
   queuedProgress = null;
 }
+
+// ── Content-page reveals ──────────────────────────────────────────────────
+
+let pageReveals: RevealController | null = null;
+let revealToken = 0;
+
+/**
+ * Content pages (anything without the home story) reveal their `[data-reveal]`
+ * blocks with the same rules as the story. GSAP is only fetched when the page
+ * has some, after first paint, and never with reduced motion. Scrolling stays
+ * native (Lenis belongs to the home story).
+ */
+async function mountPageReveals() {
+  const root = document.querySelector<HTMLElement>('main');
+  if (!root || root.querySelector('[data-story]') || prefersReducedMotion()) return;
+  if (!root.querySelector('[data-reveal]')) return;
+  const token = ++revealToken;
+  await new Promise<void>((resolve) => afterFirstPaint(resolve));
+  if (token !== revealToken || !root.isConnected) return;
+  try {
+    const mod = await withTimeout(import('./reveal'), STORY_CHUNK_TIMEOUT_MS, 'reveal chunk load');
+    if (token !== revealToken || !root.isConnected || prefersReducedMotion()) return;
+    // The poster tier gets simple fades; anything else (or not yet known) the full reveals.
+    const created = await mod.mountReveals(root, !pending && tier === 'poster' ? 'lite' : 'full');
+    if (token !== revealToken || !root.isConnected) {
+      created.destroy();
+      return;
+    }
+    pageReveals = created;
+    countTriggers ??= mod.triggerCount;
+  } catch (e) {
+    error(`reveals unavailable: ${errorText(e)}`);
+  }
+}
+
+function unmountPageReveals() {
+  revealToken++;
+  pageReveals?.destroy();
+  pageReveals = null;
+}
+
+/** ?debug: live ScrollTriggers on this page (set once GSAP has loaded). */
+let countTriggers: (() => number) | null = null;
 
 // ── Pages ─────────────────────────────────────────────────────────────────
 
@@ -502,6 +547,7 @@ function onPage() {
     sync();
   }
   void mountStory();
+  void mountPageReveals();
 }
 
 function bindPointer() {
@@ -542,11 +588,14 @@ export function initSceneBoot() {
   document.addEventListener('astro:before-swap', (event) => {
     stampIncoming(event);
     unmountStory();
+    unmountPageReveals();
   });
   document.addEventListener('visibilitychange', sync);
 
   matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
-    if (prefersReducedMotion()) setTier('poster', 'reduced motion switched on');
+    if (!prefersReducedMotion()) return;
+    pageReveals?.finish();
+    setTier('poster', 'reduced motion switched on');
   });
 
   bindPointer();
@@ -566,6 +615,9 @@ export function initSceneBoot() {
         cameraProgress: handle?.cameraProgress ?? null,
         queuedProgress,
         blocked: sceneBlocked || null,
+        page: location.pathname,
+        triggers: countTriggers?.() ?? 0,
+        reveals: pageReveals?.pending ?? null,
       }),
       setTier: (next: QualityTier) => setTier(next, 'set from ?debug'),
       diagnostics: getDiagnostics,

@@ -4,24 +4,39 @@ import type { Service } from '../lib/site';
 interface Props {
   service: Service;
   index: number;
+  /** The Services page also lists what's included. */
+  detailed?: boolean;
+  /** Heading level for the package name. */
+  level?: 2 | 3;
 }
 
-const { service, index } = Astro.props;
+const { service, index, detailed = false, level = 3 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
 ---
 
 <article class="service-card">
   <p class="label">
     <span class="service-card__num">0{index + 1}</span> {service.package}
   </p>
-  <h3 class="service-card__name">{service.name}</h3>
+  <Heading class="service-card__name">{service.name}</Heading>
   <p class="service-card__desc">{service.description}</p>
+  {detailed && (
+    <div class="service-card__included">
+      <p class="label">What’s included</p>
+      <ul>
+        {service.included.map((item) => (
+          <li>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )}
   <p class="service-card__price">{service.price}</p>
 </article>
 
 <style>
   .service-card {
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto auto 1fr auto;
     gap: var(--space-s);
     height: 100%;
     padding: var(--space-l);
@@ -40,6 +55,23 @@ const { service, index } = Astro.props;
     font-weight: var(--weight-display);
     letter-spacing: var(--tracking-display);
     line-height: 1.05;
+  }
+
+  .service-card__included {
+    display: grid;
+    gap: var(--space-xs);
+    align-content: start;
+  }
+
+  .service-card__included ul {
+    display: grid;
+    gap: var(--space-2xs);
+    margin: 0;
+    padding-left: 1.2em;
+  }
+
+  .service-card__included li::marker {
+    color: var(--lava);
   }
 
   .service-card__price {

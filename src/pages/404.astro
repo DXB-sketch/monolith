@@ -1,17 +1,49 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageIntro from '../components/PageIntro.astro';
+import { CTA } from '../lib/site';
 ---
 
-<BaseLayout title="Off the map" description="This page doesn’t exist.">
+<BaseLayout
+  title="Off the map"
+  description="This page doesn’t exist. Head back to the monolith, see the work, or start a project."
+>
   <PageIntro
     eyebrow="404 · Unknown terrain"
     title="You’ve wandered off the"
     accent="edge of the map."
-    lead="Nothing has cooled into shape here yet. The way back is solid ground."
+    lead="Nothing has cooled into shape here yet. The page may have moved, or the link may be wrong. The way back is solid ground."
   >
-    <a class="btn btn--primary" href="/">
-      Back to the monolith
-    </a>
+    <ul class="lost-links">
+      <li>
+        <a class="btn btn--primary" href="/">
+          Back to the monolith
+          <span class="btn__arrow" aria-hidden="true">
+            →
+          </span>
+        </a>
+      </li>
+      <li>
+        <a class="btn btn--ghost" href="/work">
+          See the work
+        </a>
+      </li>
+      <li>
+        <a class="btn btn--ghost" href={CTA.href}>
+          {CTA.label}
+        </a>
+      </li>
+    </ul>
   </PageIntro>
 </BaseLayout>
+
+<style>
+  .lost-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-s);
+    margin: var(--space-s) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>

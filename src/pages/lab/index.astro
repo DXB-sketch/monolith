@@ -1,28 +1,140 @@
 ---
+import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageIntro from '../../components/PageIntro.astro';
-import Section from '../../components/Section.astro';
-import { LAB } from '../../lib/site';
+import NextStep from '../../components/NextStep.astro';
+
+const entries = (await getCollection('lab')).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
+);
+const dateFormat = new Intl.DateTimeFormat('en-AU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
 ---
 
 <BaseLayout
+  footerCta={false}
   title="Lab"
-  description="Experiments from Monolith Web Studio: shaders, motion studies and interaction ideas."
+  description="Experiments from Monolith Web Studio: shaders, motion studies and interaction ideas, tested here before they reach a client’s site."
 >
   <PageIntro
     eyebrow="Lab"
     title="Experiments in"
     accent="light and stone."
-    lead="Where I test ideas before they reach a client’s site."
+    lead="Where I test ideas before they reach a client’s site: shaders, motion studies and interaction experiments."
   />
 
-  <Section title="Experiments">
-    <ul>
-      {LAB.map((entry) => (
-        <li>
-          <a href={`/lab/${entry.slug}`}>{entry.title}</a>
-        </li>
-      ))}
-    </ul>
-  </Section>
+  <section class="lab" aria-labelledby="lab-title">
+    <div class="container">
+      <h2 id="lab-title" class="visually-hidden">
+        Experiments
+      </h2>
+      <ul class="lab-grid">
+        {entries.map((entry) => (
+          <li data-reveal>
+            <article class="lab-card">
+              <p class="label">
+                <time datetime={entry.data.date.toISOString().slice(0, 10)}>
+                  {dateFormat.format(entry.data.date)}
+                </time>
+              </p>
+              <h3 class="lab-card__title">
+                <a class="lab-card__link" href={`/lab/${entry.id}`}>
+                  {entry.data.title}
+                </a>
+              </h3>
+              <p class="lab-card__summary">{entry.data.summary}</p>
+              {entry.data.tags.length > 0 && (
+                <ul class="lab-card__tags" aria-label="Tags">
+                  {entry.data.tags.map((tag) => (
+                    <li class="label">{tag}</li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <NextStep />
 </BaseLayout>
+
+<style>
+  .lab {
+    position: relative;
+    padding-bottom: var(--space-xl);
+  }
+
+  .lab-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+    gap: var(--space-s);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lab-grid > li {
+    display: grid;
+  }
+
+  .lab-card {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: var(--space-s);
+    padding: var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+    transition: border-color var(--dur-base) var(--ease-out);
+  }
+
+  .lab-card:hover,
+  .lab-card:focus-within {
+    border-color: var(--lava);
+  }
+
+  .lab-card__title {
+    font-size: var(--step-3);
+    font-weight: var(--weight-display);
+    letter-spacing: var(--tracking-display);
+    line-height: 1.1;
+  }
+
+  /* The whole card is the link's target area; the link itself stays the title. */
+  .lab-card__link {
+    color: var(--bone);
+    text-decoration: none;
+  }
+
+  .lab-card__link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .lab-card__summary {
+    color: var(--ash-soft);
+  }
+
+  .lab-card__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lab-card__tags li {
+    padding: 0.2em 0.8em;
+    border: var(--hairline);
+    border-radius: var(--radius-pill);
+  }
+</style>
