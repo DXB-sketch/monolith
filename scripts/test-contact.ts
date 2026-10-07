@@ -277,6 +277,19 @@ await test('rate limit: the 6th submission from one IP in 10 minutes is dropped'
   assert(other.status === 200 && sent.length === before + 6, 'other IPs unaffected');
 });
 
+await test('a request without forwarding headers still works', async () => {
+  const before = sent.length;
+  const response = await handler.fetch(
+    new Request(`${ORIGIN}/api/contact`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json', origin: ORIGIN },
+      body: JSON.stringify(valid()),
+    }),
+  );
+  assert(response.status === 200, `status ${response.status}`);
+  assert(sent.length === before + 1, 'one email expected');
+});
+
 await test('oversized payload is rejected without sending', async () => {
   const before = sent.length;
   const response = await post({ ...valid(), message: 'x'.repeat(30 * 1024) }, { json: true });

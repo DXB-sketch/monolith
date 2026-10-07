@@ -38,7 +38,8 @@ async function readBody(request: Request): Promise<Record<string, string> | null
   }
 }
 
-export const POST: APIRoute = async ({ request, cookies, redirect, clientAddress, url }) => {
+export const POST: APIRoute = async (context) => {
+  const { request, cookies, redirect, url } = context;
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
   const secure = url.protocol === 'https:';
   const declared = Number(request.headers.get('content-length') ?? 0);
@@ -56,8 +57,9 @@ export const POST: APIRoute = async ({ request, cookies, redirect, clientAddress
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     request.headers.get('x-real-ip') ||
     (() => {
+      // Read lazily: the getter throws when the adapter has no address.
       try {
-        return clientAddress;
+        return context.clientAddress;
       } catch {
         return 'unknown';
       }
