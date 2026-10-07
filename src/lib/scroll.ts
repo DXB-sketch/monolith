@@ -3,8 +3,9 @@
  * GSAP ticker, feeding ScrollTrigger. Lives in the lazily loaded story chunk.
  *
  * Smooth scrolling applies to wheel and trackpad only; touch devices keep
- * native scrolling (`syncTouch: false`). With reduced motion, tier Off or Low,
- * there is no Lenis at all: ScrollTrigger reads native scroll.
+ * native scrolling (`syncTouch: false`). Lenis exists only in the story's full
+ * mode: with reduced motion, tier Off or Low, or while the tier is still being
+ * decided, ScrollTrigger reads native scroll.
  */
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -14,25 +15,14 @@ gsap.registerPlugin(ScrollTrigger);
 // Mobile address-bar show/hide changes the viewport height; don't refresh on it.
 ScrollTrigger.config({ ignoreMobileResize: true });
 
-export interface ScrollController {
-  lenis: Lenis | null;
-  /** Scroll to a position. Smooth with Lenis, instant otherwise. */
+export interface SmoothScroll {
+  lenis: Lenis;
   scrollTo(y: number, onComplete?: () => void): void;
   destroy(): void;
 }
 
-export async function createScroll(smooth: boolean): Promise<ScrollController> {
-  if (!smooth) {
-    return {
-      lenis: null,
-      scrollTo(y, onComplete) {
-        window.scrollTo({ top: y, behavior: 'instant' });
-        onComplete?.();
-      },
-      destroy() {},
-    };
-  }
-
+/** Lenis on the GSAP ticker. Created and destroyed in place; never jumps the scroll. */
+export async function createSmoothScroll(): Promise<SmoothScroll> {
   const { default: LenisClass } = await import('lenis');
   const lenis = new LenisClass({
     autoRaf: false,
@@ -59,6 +49,12 @@ export async function createScroll(smooth: boolean): Promise<ScrollController> {
       lenis.destroy();
     },
   };
+}
+
+/** Native, instant scroll (no Lenis). */
+export function nativeScrollTo(y: number, onComplete?: () => void) {
+  window.scrollTo({ top: y, behavior: 'instant' });
+  onComplete?.();
 }
 
 export { gsap, ScrollTrigger };

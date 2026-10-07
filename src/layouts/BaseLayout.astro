@@ -4,6 +4,7 @@ import '../styles/global.css';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
 import SceneStage from '../components/SceneStage.astro';
+import Intro from '../components/Intro.astro';
 import { SITE } from '../lib/site';
 import { PALETTE_HEX } from '../scene/palette';
 
@@ -55,13 +56,32 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
       crossorigin
     />
 
-    <!-- Mark JS as available before first paint so no-JS fallbacks never flash. -->
+    <!-- Mark JS as available before first paint so no-JS fallbacks never flash.
+         The intro shows once per session, on a direct visit to the home page:
+         never a deep link, back/forward, reduced motion or a ClientRouter navigation. -->
     <script is:inline>
-      document.documentElement.classList.add('js');
+      (function () {
+        const root = document.documentElement;
+        root.classList.add('js');
+        try {
+          if (location.pathname !== '/' || location.hash) return;
+          if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          const nav = performance.getEntriesByType('navigation')[0];
+          if (nav && nav.type === 'back_forward') return;
+          if (sessionStorage.getItem('monolith:intro')) return;
+          sessionStorage.setItem('monolith:intro', '1');
+          root.classList.add('intro-on');
+          root.dataset.introAt = String(Math.round(performance.now()));
+        } catch {
+          // No storage: no intro.
+        }
+      })();
     </script>
     <ClientRouter fallback="none" />
   </head>
   <body>
+    <Intro />
+
     <a class="skip-link" href="#main">
       Skip to content
     </a>

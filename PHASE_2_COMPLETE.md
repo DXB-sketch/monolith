@@ -264,3 +264,213 @@ The core vein adds about 5–10% fragment cost. Medium remains about 2.3× cheap
 - **Root state:** `scene-boot.ts` re-stamps `html.js` and `data-tier` onto every incoming document before the swap. Don't rely on `astro:after-swap` for anything that has to be in place during ClientRouter's scroll restoration.
 - **Reusable styles:** `.chapter__panel`, the eyebrow label style and `PageIntro`/`Section` give content pages the same panel language.
 - **Scene API** (`src/scene/index.ts`): `setProgress(p, immediate?)`, `setStoryMap(map)`, `setChapter(i)`, `setPointer(x, y)`, `pause()`, `resume()`, `dispose()`. Pages go through `scene-boot.ts`'s bridge and never hold the handle themselves.
+
+## Post-Phase 2 fixes: first load
+
+Targeted fixes after the first real-device test (`DEBUG_FIRST_LOAD_PROMPT.md`). The look of the scene, the camera path, the chapter states and the copy are unchanged. The shader change below is a no-op for the post-processed path: a render compared against the poster scored 39.9 dB PSNR, so the posters were not re-rendered.
+
+### Issue 1: the scroll story was missing on first visit
+
+**Confirmed cause: neither (a) nor (b). It was a third cause that looked the same.**
+
+- **Not (a).** The story did not mount in the wrong mode. It awaited the final tier before mounting, so it always mounted as `full` on a capable device.
+- **Not (b).** Progress was not lost when the scene arrived late. The bridge queued the progress and forwarded it: with the scene delayed, the camera went from 0.028 to 0.165 to match the page.
+- **The actual cause was the frame-time check.** It counted the first frames after setup, which include shader compilation and GPU uploads. Measured first frames: 39, 2767, 33, 117, 333, 33, 1100, 733 ms…, an average of 92.8 ms against a 38.5 ms limit for Medium.
+- **What happened next.** The check dropped Medium to Low on every cold load, and Low tears the scene down to the poster. The poster is the Chapter 00 hero shot, so the page looked as if the scroll story had never started. On a warm load, compilation is cached and the check passed, which is why it only happened on the first visit.
+
+**Tier caching:** none. Every visit decides the tier from scratch, and nothing about the tier is stored in `localStorage`, cookies or `sessionStorage`.
+
+### Issue 3: the scene never appeared on mobile
+
+There are no device logs yet, so this is the **likely** cause, from the code and from emulation:
+
+1. **The same warm-up downgrade as Issue 1.** Phones compile shaders more slowly, so the first frames always failed the check: Medium dropped to Low, then the poster.
+2. **Tier rules that put recent iPhones on Low:**
+   - Safari reports `hardwareConcurrency` as at most 4 (sometimes 2), and does not report `deviceMemory` at all.
+   - The old rule treated cores ≤ 2 as Low, and missing memory as low memory.
+3. **Async steps with no timeout.** A `requestAdapter()` that never resolves, or a scene setup that never finishes, left the page on the poster with nothing recorded.
+4. **Configurations the scene could not handle.** No half-float render targets, an incomplete post-processing framebuffer or a lost context threw, and the only fallback was the poster.
+5. **No record of why.** None of this was visible on the device.
+
+Now every async step has a timeout, every fallback records its reason, and the scene degrades one step at a time before it gives up.
+
+### Final tier rules (`src/scene/quality.ts`)
+
+1. **Fast rules, decided at once:**
+   - `?tier=` or reduced motion → Off.
+   - Save-Data, 2G, or a *known* `deviceMemory` ≤ 2 → Low.
+2. **GPU probe:**
+   - WebGPU `requestAdapter` with a 1.5 s timeout, then the WebGL2 probe.
+   - The whole detection has a 4 s timeout; if it times out, the tier is Low.
+3. **No WebGL** → Off.
+4. **Software renderer** or a weak GPU (Mali-T/G31/G51/G52, Adreno ≤ 5xx, PowerVR, Utgard/Midgard, Intel GMA) → Low.
+5. **Medium**, if any of these:
+   - a mobile or integrated GPU (Adreno 6xx+, Mali-G7x+, Apple GPU on touch, Xclipse, Intel HD)
+   - a coarse pointer
+   - a screen whose short side is under 768 px
+   - *known* memory ≤ 4 GB
+   - *known* cores ≤ 4
+6. **Otherwise High.**
+
+Unknown memory or cores never lower the tier. In emulation:
+
+| Device | Tier |
+|---|---|
+| iPhone 13 / 15 Pro (no memory reported) | Medium |
+| Pixel 7 (Adreno 730) | Medium |
+| Mali Utgard | Low |
+
+**Frame-time check:**
+- It starts after the first frame plus 30 warm-up frames, then samples 2 s of real frame time (each frame capped at 250 ms).
+- High drops to Medium in place above 22.2 ms (45 fps).
+- Medium drops to Low (the poster and the lite story) above 38.5 ms (26 fps).
+
+### Changes by issue
+
+**Issue 1: reactive story (`src/lib/story.ts`, `src/lib/scene-boot.ts`, `src/lib/scroll.ts`)**
+
+- **The story is now a controller** with modes `pending`, `full`, `lite` and `static`:
+  - It mounts as soon as possible in the current mode, without waiting for the tier.
+  - `setMode()` switches in place.
+  - Reveals and the SplitText splits are built once. Lenis is created only in `full` mode and destroyed on leaving it, so there is never more than one.
+  - The scroll position is never touched. Measured across lite → full → lite → full → static: 23 triggers throughout, Lenis 0 or 1, and `scrollY` unchanged at 1125.
+- **`setTier()` in `scene-boot.ts` is now the single place the tier changes:**
+  - It starts or tears down the scene, or records the poster.
+  - It then calls `story.setMode()`.
+  - The reduced-motion change and the scene's own downgrades all go through it.
+- **The bridge always forwards to the current scene handle.** When a scene arrives, it applies the queued story map, then `setProgress(p, true)`. With the scene delayed by 5 s, the camera matched the page (0.349) on arrival.
+- **`ScrollTrigger.refresh()` is debounced (150 ms)** and runs after the first scene frame, on `document.fonts.ready`, and after each mode change.
+- **The warm-up fix for the frame-time check** (Issue 2) is what removes the actual cause.
+
+**Issue 2: slow first load**
+
+- **Instrumentation (`src/lib/diagnostics.ts`):**
+  - `performance.mark('monolith:…')` at each boot step.
+  - The marks are shown in the `?fps` overlay under a collapsible **Load** section.
+  - Without `?fps` or `?debug`, no marks are written and the overlay chunk is never fetched. Verified: 0 marks, no overlay request.
+- **Scene chunk fetch:**
+  - The scene chunk is prefetched (`rel=prefetch`, low priority) after `load` while the tier is still pending, so the download overlaps the GPU probe.
+  - The build plugin in `astro.config.mjs` writes the hashed chunk URL into the boot script.
+  - Low and Off never import the chunk, so Three.js never executes on them.
+  - Save-Data and 2G are decided as Low before any prefetch.
+- **LCP:**
+  - A first attempt used `modulepreload` and moved the story import to boot time. That competed with the fonts that the LCP text needs, and Lighthouse LCP rose to 2.2–2.9 s.
+  - Fix: the prefetch now waits for `load`, and the story import waits for first paint. LCP is back to 1.7 s (see Lighthouse below).
+- **Shader compilation:**
+  - `renderer.compileAsync()` (KHR_parallel_shader_compile) compiles the scene materials and then the post-processing materials, with a 15 s timeout that is not fatal.
+  - A hidden warm-up render follows.
+  - The poster stays up until all of that is done and the first real frame has drawn, then cross-fades over 1.2 s.
+- **Frame-time check:** now starts after the warm-up described above. No quality was reduced.
+
+**Issue 3: scene never appears on mobile (`src/scene/index.ts`, `src/scene/quality.ts`, `src/lib/scene-boot.ts`)**
+
+- **Timeouts on every async step:**
+
+  | Step | Timeout |
+  |---|---|
+  | WebGPU adapter | 1.5 s |
+  | Tier detection | 4 s |
+  | Story chunk | 20 s |
+  | Scene chunk | 30 s |
+  | Scene setup | 45 s |
+  | First frame | 8 s |
+  | Context restore | 10 s |
+
+  A setup that arrives after its timeout is disposed.
+- **Degrade ladder.** Each attempt runs `compileAsync`, then checks the shader logs (`renderer.debug.onShaderError`), the framebuffer status and `GL_OUT_OF_MEMORY` after a warm-up render:
+  - No half-float colour buffer → 8-bit render targets with dithering.
+  - Post-processing fails → the same tier without post-processing (ACES tone mapping in the renderer, through the shader chunks added to the five fragment shaders).
+  - High → High without post → Medium → Medium without post. Only if Medium also fails does the page fall back to the poster.
+- **WebGL context lost:** the poster is shown at once.
+- **Context restored:** the scene is rebuilt and goes live again. If the context is not restored within 10 s, the poster stays and the reason is recorded.
+- **Diagnostics:**
+  - Every fallback reason, error (shader log, framebuffer status code, timeout) and tier signal is recorded.
+  - Signals recorded: GPU string and source, memory or "unknown", cores, DPR, screen and touch.
+  - The `?fps` overlay shows them under **Diagnostics**, and `?debug` logs them to the console.
+  - `?debug` also exposes `window.__monolith.state()` and `window.__story`, for tests.
+- **Tier rules:** as listed above.
+
+### Tests (Playwright, Chromium with SwiftShader; no GPU in this container)
+
+- **Cold first visit** (fresh profile, cache disabled, Fast 4G at 60 ms / 9 Mbps, 4× CPU, desktop GPU stub, tier pinned with `?keeptier`):
+  - The story mounted in `pending` mode at about 0.6 s and the tier was final at about 0.95 s.
+  - The scene was live at about 6 s.
+  - After a wheel scroll the camera progress (0.304) matched the page.
+- **Same cold visit without the pin:** SwiftShader really is slow (220 ms frames). After warm-up the check correctly dropped to Low: the story switched to `lite`, Lenis went to 0, the poster was shown, and the reason was recorded.
+- **Hung `requestAdapter` stub:** the WebGL probe decided the tier 1.8 s after detection started, and the scene went live.
+- **No half-float stub:** the scene ran as "medium, post, 8-bit" and rendered correctly.
+- **Incomplete framebuffer stub:** recorded `0x8cd6`, then ran as "medium, no post" and rendered correctly.
+- **Context loss and restore** (`WEBGL_lose_context`): the poster showed on loss; on restore the scene was rebuilt and went live.
+- **Mobile Chrome emulation:** iPhone 13, iPhone 15 Pro and Pixel 7 got Medium; the Utgard stub got Low.
+- **Lifecycle re-tested on the new code:**
+  - Deep link `#face-ii` restores without replay.
+  - HUD Enter scrolls to the chapter and focuses its heading.
+  - Two round trips to `/about` and back: 0 triggers on `/about`, the same count on each return, and the same position, chapter and temperature.
+  - Back navigation restores `scrollY` 3000.
+  - Reduced motion and no-JS are unchanged.
+  - Keyboard tab order is unchanged in High and Low.
+- **WebKit was not tested.** Only Chromium is installed in this container, and browsers must not be downloaded here. iOS Safari needs a real-device check (below).
+
+### Load timings (local production build)
+
+Both runs use Fast 4G and 4× CPU, with a desktop GPU stub, SwiftShader and `?fps&keeptier`. Times are milliseconds from navigation start, from the `?fps` Load marks:
+
+| Step | Cold | Warm |
+|---|---|---|
+| First contentful paint | 2132 | 1384 |
+| Boot start | 1884 | 1212 |
+| Tier final | 2254 | 1504 |
+| Scene chunk loaded | 2488 | 1668 |
+| Story mounted | 4017 | 3241 |
+| Shaders compiled | 7288 | 6452 |
+| First frame | 7394 | 6535 |
+| Poster cross-fade done | 8595 | 7735 |
+
+**What the timings show:**
+- Compilation dominates: about 4.8 s on SwiftShader with 4× CPU throttling, cold or warm. A real GPU with KHR_parallel_shader_compile should be far faster; this needs a device check.
+- On the warm visit, the scene chunk comes from cache 160 ms after it is requested.
+- On every run, the tier is decided within about 0.4 s of boot.
+
+**Bundle sizes (gzip):**
+
+| Bundle | Phase 2 | Now |
+|---|---|---|
+| Initial JS (ClientRouter + BaseLayout + `quality`) | ≈ 8.3 KB | ≈ 10.2 KB |
+| Scene chunk | 162.8 KB | 165.0 KB |
+| Story chunk | 45.7 KB | 46.2 KB |
+| `?fps` overlay | — | 1.3 KB, never loaded without `?fps` |
+
+### Lighthouse mobile (local production build, three runs, same setup as above)
+
+| Run | Performance | Accessibility | Best Practices | SEO | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 100 | 100 | 100 | 100 | 1.4 s | 1.7 s | 40 ms | 0 |
+| 2 | 99 | 100 | 100 | 100 | 1.4 s | 1.7 s | 50 ms | 0 |
+| 3 | 100 | 100 | 100 | 100 | 1.4 s | 1.7 s | 60 ms | 0 |
+
+This is no worse than Phase 2 (99–100, LCP 1.7–2.1 s).
+
+`npm run build`, `lint`, `format:check` and `check:camera` all pass with no warnings.
+
+### What the owner should check on devices
+
+Open `/?fps` on each device in a **fresh private tab**. That is the cold, first-visit case.
+
+1. **The live line** shows the tier and whether the scene is live, resting or on the poster. Expected:
+
+   | Device | Tier |
+   |---|---|
+   | Recent iPhone or Android flagship | `medium · live` |
+   | Desktop with a dedicated GPU | `high · live` |
+
+2. **If it shows `poster`,** open **Diagnostics**. The fallback line says why, for example:
+   - a frame-time downgrade (with the measured average)
+   - a timeout (and which step)
+   - a shader or framebuffer error
+   - context loss
+
+   The **tier signals** show what the device reported (GPU string, memory, cores, DPR, screen). Screenshot both and send them.
+3. **Open Load** to see how long each step took on the device: tier final, scene chunk loaded, shaders compiled, first frame. Expect shader compilation to be the longest step.
+4. **Scroll the story.** The HUD and the camera should move together from the first scroll, including while the poster is still up.
+5. **Add `?debug`** (`/?fps&debug`) to get the same entries in the console (Safari Web Inspector or Chrome remote debugging).
+6. **To check a single tier,** use `?tier=high&fps` or `?tier=medium&fps`. The frame-time check still applies; add `&debug&keeptier` to disable it while judging the feel.

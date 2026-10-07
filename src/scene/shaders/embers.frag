@@ -11,4 +11,7 @@ void main() {
   color = mix(color, uEmber, smoothstep(0.5, 1.0, vLife));
   float intensity = mix(7.0, 1.5, vLife);
   gl_FragColor = vec4(safeHdr(color * intensity), clamp(a * vAlpha, 0.0, 1.0));
+  // Only active without post-processing (direct to screen); no-ops into render targets.
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }

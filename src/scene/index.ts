@@ -1,65 +1,116 @@
 /**
  * The scene's public API. Pages and the scroll system talk to the scene only
  * through createScene() and the handle it returns (SCENE_SPEC.md).
+ *
+ * Phase 2.5: the scene builds up in layers, each compiled off the main thread
+ * (compileAsync / KHR_parallel_shader_compile) and faded in as soon as the
+ * previous one is stable:
+ *   L1 sky, distant peaks, the monolith (this chunk; the poster cross-fades
+ *      to it as soon as its first frame is on screen)
+ *   L2 terrain and fog · L3 lava and its glow · L4 embers · L5 post-processing
+ *      (High, Medium) — the layers chunk, src/scene/layers.ts
+ *   L6 extras: pointer heat, hairline crazing, full horizon smoke, every ember
+ *
+ * A frame-time controller then holds the tier's frame rate (60 fps; Lite 30):
+ * resolution scale first (0.5–1), then the extras, then one tier down, and the
+ * poster only when Lite at half resolution can't hold ~24 fps. With headroom
+ * it scales back up, and may step up a tier (once per tier per session).
  */
 import {
+  ACESFilmicToneMapping,
   Color,
-  HalfFloatType,
   MathUtils,
   Matrix4,
-  NoToneMapping,
   PerspectiveCamera,
   Ray,
   Scene,
   SRGBColorSpace,
+  type Texture,
   Vector2,
   Vector3,
   Vector4,
   WebGLRenderer,
+  type Object3D,
 } from 'three';
-import {
-  BlendFunction,
-  BloomEffect,
-  EffectComposer,
-  EffectPass,
-  NoiseEffect,
-  RenderPass,
-  ToneMappingEffect,
-  ToneMappingMode,
-  VignetteEffect,
-} from 'postprocessing';
+import { loadFissureAtlas, type FissureAtlas } from './atlas';
 import { cameraAt, createPose, idleOffset } from './camera-path';
 import { blendChapterState, createChapterState } from './chapters';
 import { createChannel } from './channel';
-import { createEmbers } from './embers';
-import { createLava } from './lava';
-import { createMonolith, LAVA_LIGHT_COUNT, MONOLITH } from './monolith';
+import { createGlow, type GlowModule } from './glow';
+import { createGpuTimer, type GpuTimer, type GpuTimings } from './gpu-timer';
+import { createMonolith, LAVA_LIGHT_COUNT, MONOLITH, type MonolithModule } from './monolith';
+import { terrainHeight } from './ground';
 import { PALETTE_HEX } from './palette';
-import { DOWNGRADE_FRAME_MS, TIER_SETTINGS, type QualityTier, type SceneTier } from './quality';
-import { createSky } from './sky';
+import { createPeaks } from './peaks';
+import {
+  higherTier,
+  lowerTier,
+  SCENE_TIERS,
+  TIER_SETTINGS,
+  type QualityTier,
+  type SceneTier,
+  type TierSettings,
+} from './quality';
+import { createSky, type SkyModule } from './sky';
 import { DEFAULT_STORY_MAP, storyPosition, type StoryMap, type StoryPosition } from './story-map';
-import { createTerrain, terrainHeight } from './terrain';
+import { BLOOM_DIVE, BLOOM_INTENSITY, GRAIN_OPACITY, VIGNETTE_DARKNESS } from './look';
+import { createNoiseTexture } from './textures';
 import type { SceneModule, SceneState } from './types';
-import { createSharedUniforms } from './uniforms';
-import { WashEffect } from './wash';
+import { createSharedUniforms, type SharedUniforms } from './uniforms';
+import type { EmbersModule, LavaModule, PostChain, TerrainModule } from './layers';
 
 export type { QualityTier, SceneTier } from './quality';
 export type { StoryMap } from './story-map';
 
+type LayersModule = typeof import('./layers');
+
 export interface SceneOptions {
   tier: SceneTier;
+  /** Resolution scale to start from (0.5–1), e.g. remembered this session. */
+  startScale?: number;
+  /** The highest tier this session may still upgrade into. */
+  ceiling?: SceneTier | 'poster';
+  /** Tiers already reached by an upgrade this session (each happens once). */
+  upgraded?: SceneTier[];
+  /** The fissure atlas fetch, already in flight (baked tiers). */
+  atlas?: Promise<Blob>;
   /** Called once, after the first frame is on screen (cross-fade from the poster). */
   onFirstFrame?: () => void;
-  /** Called when the scene drops a tier after the 3-second check, or loses its context. */
-  onTierChange?: (tier: QualityTier) => void;
-  /** Poster capture: freeze time (and optionally story progress) and keep the drawing buffer. */
-  capture?: { time: number; progress?: number };
-  /** Skip the 3-second frame-time check (a tier forced with ?tier= is never second-guessed). */
+  /** The scene changed tier itself (upgrade, downgrade, or 'poster' as the last resort). */
+  onTierChange?: (tier: QualityTier, reason: string) => void;
+  /** Settled state worth remembering this session (tier, scale, ceiling, upgrades). */
+  onSettle?: (state: {
+    tier: SceneTier;
+    scale: number;
+    ceiling: SceneTier | 'poster';
+    upgraded: SceneTier[];
+  }) => void;
+  /** Load phases, for the ?fps overlay (e.g. 'L1 compiled'). */
+  onPhase?: (phase: string, detail?: string) => void;
+  /** Problems and degradations: shader logs, missing extensions, failed layers. */
+  onIssue?: (message: string) => void;
+  /** Controller decisions (resolution, extras, tiers), for the ?fps overlay. */
+  onDecision?: (message: string) => void;
+  /** The GPU context was lost (show the poster) / restored (rebuild). */
+  onContextLost?: () => void;
+  onContextRestored?: () => void;
+  /**
+   * Without the post-processing layer there is no WashEffect, so the Chapter 04
+   * wash is handed to the page to draw over the canvas (amount 0..1, CSS colour).
+   */
+  onWash?: (amount: number, cssColor: string) => void;
+  /** Never change tier (a tier forced with ?tier= is never second-guessed). */
   fixedTier?: boolean;
-  /** Dev only: object names to hide (sky, terrain, lava, monolith, embers). */
+  /** Hold this resolution scale (testing, cost measurements). */
+  fixedScale?: number;
+  /** Poster capture: every layer at once, frozen time (and story progress), drawing buffer kept. */
+  capture?: { time: number; progress?: number };
+  /** Dev only: object names to hide (sky, peaks, terrain, lava, monolith, embers, glow). */
   debugHide?: string[];
-  /** Dev only: render without post-processing. */
+  /** Dev only: never add the post-processing layer. */
   debugNoPost?: boolean;
+  /** Time each layer on the GPU (EXT_disjoint_timer_query_webgl2), for ?fps. */
+  gpuTiming?: boolean;
 }
 
 export interface SceneHandle {
@@ -76,7 +127,17 @@ export interface SceneHandle {
   setPointer(x: number, y: number): void;
   pause(): void;
   resume(): void;
-  dispose(): void;
+  /** Release everything. `loseContext: false` keeps the canvas usable for a rebuild. */
+  dispose(options?: { loseContext?: boolean }): void;
+  /** Which setup is running, for diagnostics (e.g. 'lite, no post'). */
+  readonly description: string;
+  readonly tier: SceneTier;
+  /** Where the camera actually is in the story (damped), for diagnostics and tests. */
+  readonly cameraProgress: number;
+  /** Per-layer GPU milliseconds, or null without timer queries. */
+  gpuTimings(): GpuTimings | null;
+  /** Readable state for the ?fps overlay: layers, scale, frame time, decisions. */
+  stats(): string[];
 }
 
 /**
@@ -84,86 +145,146 @@ export interface SceneHandle {
  * smooths the scroll, so this only adds a little weight; more would feel laggy.
  */
 const PROGRESS_DAMPING = 7;
-/** Base bloom and grain; both change through the Chapter 04 dive. */
-const BLOOM_INTENSITY = 1.25;
-const GRAIN_OPACITY = 0.1;
+/** Each layer fades in over this long. */
+const FADE_MS = 450;
+/** Frames ignored by the controller after a layer or tier appears (compiles, uploads, fades). */
+const SETTLE_FRAMES = 30;
+/** After a resolution or extras change only the next few frames are unrepresentative. */
+const SETTLE_FRAMES_SMALL = 8;
+/** The controller decides at most this often. */
+const DECISION_MS = 500;
+const SCALE_MIN = 0.5;
+const SCALE_DOWN = 0.1;
+const SCALE_UP = 0.05;
+/** Headroom needed before scaling up, restoring extras, or stepping up a tier. */
+const SCALE_UP_HOLD_MS = 2000;
+const EXTRAS_HOLD_MS = 3000;
+const UPGRADE_HOLD_MS = 5000;
+/** Lite at the minimum scale below this frame rate: the poster. */
+const POSTER_FPS = 24;
+/** Shader compilation gets this long before rendering compiles synchronously. */
+const COMPILE_TIMEOUT_MS = 15000;
+/** Embers without the extras layer (the rest arrive with L6). */
+const BASE_EMBER_SHARE = 0.6;
 
-const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+interface Fade {
+  apply(value: number): void;
+  start: number;
+}
+
+/** One tier's scene: built in layers, torn down as a whole. */
+interface World {
+  tier: SceneTier;
+  settings: TierSettings;
+  scene: Scene;
+  camera: PerspectiveCamera;
+  shared: SharedUniforms;
+  sky: SkyModule;
+  monolith: MonolithModule;
+  glow: GlowModule | null;
+  terrain: TerrainModule | null;
+  lava: LavaModule | null;
+  embers: EmbersModule | null;
+  post: PostChain | null;
+  /** The post chain is drawing (L5 done). */
+  postActive: boolean;
+  modules: SceneModule[];
+  fades: Fade[];
+  /** Highest layer in place (1–6). */
+  layer: number;
+  disposed: boolean;
+  dispose(): void;
+}
 
 export async function createScene(
   canvas: HTMLCanvasElement,
   options: SceneOptions,
 ): Promise<SceneHandle> {
-  let tier: SceneTier = options.tier;
-  let settings = TIER_SETTINGS[tier];
   const capture = options.capture;
+  const issue = (message: string) => options.onIssue?.(message);
+  const phase = (name: string, detail?: string) => options.onPhase?.(name, detail);
 
-  // ── Renderer and scene graph ───────────────────────────────────────────
-  const renderer = new WebGLRenderer({
-    canvas,
-    antialias: false,
-    alpha: false,
-    stencil: false,
-    depth: true,
-    powerPreference: 'high-performance',
-    preserveDrawingBuffer: Boolean(capture),
-  });
+  // ── Renderer (one context for every tier and layer) ────────────────────
+  let renderer: WebGLRenderer;
+  try {
+    renderer = new WebGLRenderer({
+      canvas,
+      antialias: false,
+      alpha: false,
+      stencil: false,
+      depth: true,
+      powerPreference: 'high-performance',
+      preserveDrawingBuffer: Boolean(capture),
+    });
+  } catch (error) {
+    throw new Error(`WebGL context could not be created: ${errorText(error)}`, { cause: error });
+  }
   renderer.outputColorSpace = SRGBColorSpace;
-  renderer.toneMapping = NoToneMapping; // ACES is applied in the effect chain
+  // Materials tone-map when drawing straight to the screen (L1–L4, and Lite
+  // throughout). Into the post chain's targets three skips it, and the chain's
+  // own ACES pass takes over.
+  renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.92;
   renderer.setClearColor(new Color(PALETTE_HEX.basalt));
+  const gl = renderer.getContext() as WebGL2RenderingContext;
 
-  const scene = new Scene();
-  const camera = new PerspectiveCamera(34, 1, 0.5, 6000);
-  const shared = createSharedUniforms();
-  const channel = createChannel();
+  // Shader compile and link logs, captured instead of only printed.
+  const shaderLogs: string[] = [];
+  renderer.debug.onShaderError = (context, program, vertex, fragment) => {
+    const logs = [
+      context.getProgramInfoLog(program),
+      context.getShaderInfoLog(vertex),
+      context.getShaderInfoLog(fragment),
+    ]
+      .map((log) => log?.trim())
+      .filter(Boolean)
+      .join(' | ');
+    shaderLogs.push(logs.slice(0, 600) || 'link failed without a log');
+    if (import.meta.env.DEV)
+      console.error('[scene] shader error', JSON.stringify(context.getShaderInfoLog(fragment)));
+  };
 
-  // Yield between heavier builds so the main thread stays responsive.
-  const sky = createSky(shared);
-  const terrain = createTerrain(shared, settings, channel);
-  await nextFrame();
-  const lava = createLava(shared, channel);
-  const monolith = createMonolith(shared, settings);
-  const embers = createEmbers(shared, settings.embers, channel);
-  await nextFrame();
-
-  monolith.setLavaLights(
-    channel.lightsNear(LAVA_LIGHT_COUNT, 14).map((light) => {
-      light.y = terrainHeight(light.x, light.z) + 0.3;
-      return light;
-    }),
+  // Half-float colour buffers need an extension; without it, the post chain
+  // uses 8-bit buffers with dithering rather than an incomplete framebuffer.
+  const halfFloat = Boolean(
+    gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'),
   );
+  if (!halfFloat)
+    issue('half-float render targets unsupported: post-processing uses 8-bit buffers');
 
-  const modules: SceneModule[] = [sky, terrain, lava, monolith, embers];
-  for (const m of modules) {
-    m.object.visible = !options.debugHide?.includes(m.object.name);
-    scene.add(m.object);
-  }
-
-  // ── Post-processing (pmndrs/postprocessing: effects merge into one pass) ──
-  const composer = new EffectComposer(renderer, {
-    frameBufferType: HalfFloatType,
-    multisampling: settings.msaa,
+  // ── Shared across tiers ────────────────────────────────────────────────
+  const channel = createChannel();
+  const lavaLights = channel.lightsNear(LAVA_LIGHT_COUNT, 14).map((light) => {
+    light.y = terrainHeight(light.x, light.z) + 0.3;
+    return light;
   });
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new BloomEffect({
-    mipmapBlur: true,
-    luminanceThreshold: 0.6,
-    luminanceSmoothing: 0.3,
-    intensity: 1.25,
-    radius: 0.75,
-    levels: settings.bloomLevels,
-  });
-  const vignette = new VignetteEffect({ offset: 0.3, darkness: 0.62 });
-  const toneMapping = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
-  const wash = new WashEffect();
-  const grain = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
-  // Grain is per-pixel noise: leave it out of poster captures, where it would only cost bytes.
-  const grainOpacity = capture ? 0 : GRAIN_OPACITY;
-  grain.blendMode.opacity.value = grainOpacity;
-  composer.addPass(new EffectPass(camera, bloom, vignette, toneMapping, wash, grain));
+  const noise = createNoiseTexture();
+  let cells: Texture | null = null;
+  let layers: Promise<LayersModule> | null = null;
+  const loadLayers = () => (layers ??= import('./layers'));
 
-  // ── State ──────────────────────────────────────────────────────────────
+  let atlas: FissureAtlas | null = null;
+  let atlasLoad: Promise<FissureAtlas | null> | null = null;
+  const loadAtlas = () =>
+    (atlasLoad ??= loadFissureAtlas(renderer, options.atlas, issue).then(
+      (loaded) => {
+        atlas = loaded;
+        phase('fissure atlas ready', loaded.source);
+        return loaded;
+      },
+      (error: unknown) => {
+        issue(`fissure atlas failed, using the flat glow: ${errorText(error)}`);
+        return null;
+      },
+    ));
+
+  // Per-frame GPU time: per layer with ?fps; the frame total (where the
+  // extension exists) also informs upgrades.
+  const timer: GpuTimer | null = capture ? null : createGpuTimer(renderer);
+
   const state: SceneState = {
     time: capture?.time ?? 0,
     delta: 0,
@@ -182,22 +303,212 @@ export async function createScene(
   let cameraProgress = targetProgress;
   const position: StoryPosition = { chapter: 0, dive: 0 };
   const pose = createPose();
+  const drift = new Vector3();
+  let drawingHeight = 1;
+  let world: World | null = null;
+  let pointerOn = Boolean(capture);
+
+  // ── Controller state ───────────────────────────────────────────────────
+  let scale = MathUtils.clamp(options.fixedScale ?? options.startScale ?? 1, SCALE_MIN, 1);
+  let extras = Boolean(capture);
+  let ceiling: SceneTier | 'poster' = options.ceiling ?? 'high';
+  const upgraded = new Set<SceneTier>(options.upgraded ?? []);
+  const decisions: string[] = [];
+  let lastFrameMs = 0;
+
+  const decide = (message: string) => {
+    const line = `${(performance.now() / 1000).toFixed(1)}s ${message}`;
+    decisions.push(line);
+    if (decisions.length > 5) decisions.shift();
+    options.onDecision?.(message);
+  };
+  const settle = () => {
+    if (!world || capture) return;
+    options.onSettle?.({ tier: world.tier, scale, ceiling, upgraded: [...upgraded] });
+  };
+
+  // ── Building ───────────────────────────────────────────────────────────
+  const hidden = (object: Object3D) => Boolean(options.debugHide?.includes(object.name));
+  const show = (w: World, object: Object3D) => {
+    object.visible = !hidden(object);
+    w.scene.add(object);
+    if (options.gpuTiming) timer?.track(object, object.name);
+  };
+
+  /** L1: sky, peaks, monolith (and Lite's glow sprites). */
+  const buildCore = (tier: SceneTier): World => {
+    const settings = TIER_SETTINGS[tier];
+    const scene = new Scene();
+    const camera = new PerspectiveCamera(34, 1, 0.5, 6000);
+    const shared = createSharedUniforms();
+    shared.uLavaGlow.value = 0;
+    const sky = createSky(shared, settings, noise);
+    const peaks = createPeaks(shared, settings);
+    const monolith = createMonolith(shared, settings, lavaLights);
+    if (settings.bakedFissures) monolith.setAtlas(atlas?.texture ?? null, atlas ? 1 : 0);
+    const glow = settings.fakeBloom ? createGlow(shared, channel) : null;
+    const modules: SceneModule[] = [sky, peaks, monolith];
+    if (glow) modules.push(glow);
+
+    const w: World = {
+      tier,
+      settings,
+      scene,
+      camera,
+      shared,
+      sky,
+      monolith,
+      glow,
+      terrain: null,
+      lava: null,
+      embers: null,
+      post: null,
+      postActive: false,
+      modules,
+      fades: [],
+      layer: 1,
+      disposed: false,
+      dispose() {
+        if (w.disposed) return;
+        w.disposed = true;
+        for (const m of w.modules) m.dispose();
+        w.post?.dispose();
+      },
+    };
+    for (const m of modules) show(w, m.object);
+    return w;
+  };
+
+  const fade = (w: World, apply: (value: number) => void, instant: boolean) => {
+    apply(instant ? 1 : 0);
+    if (!instant) w.fades.push({ apply, start: -1 });
+  };
+
+  /** Compile with KHR_parallel_shader_compile where available; never longer than the timeout. */
+  const compile = async (object: Object3D, w: World) => {
+    let timeout = 0;
+    try {
+      await Promise.race([
+        renderer.compileAsync(object, w.camera, w.scene),
+        new Promise((_, reject) => {
+          timeout = window.setTimeout(
+            () => reject(new Error(`shader compilation took over ${COMPILE_TIMEOUT_MS}ms`)),
+            COMPILE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      // Not fatal: the first render compiles whatever is left.
+      issue(errorText(error));
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (shaderLogs.length) throw new Error(`shader compile/link failed: ${shaderLogs[0]}`);
+  };
+
+  /** Add one layer (2–5) to a world: build, compile, then fade it in. */
+  const addLayer = async (w: World, layer: number, instant: boolean) => {
+    const mod = await loadLayers();
+    if (w.disposed) return;
+    const settings = w.settings;
+    if (layer === 2 || layer === 3) cells ??= mod.createCellsTexture();
+    const textures = { noise, cells: cells! };
+
+    if (layer === 2) {
+      const terrain = mod.buildTerrain(w.shared, settings, channel, textures);
+      await compile(terrain.object, w);
+      if (w.disposed) return terrain.dispose();
+      w.terrain = terrain;
+      w.modules.push(terrain);
+      show(w, terrain.object);
+      fade(w, (v) => terrain.setFade(v), instant);
+    } else if (layer === 3) {
+      const lava = mod.buildLava(w.shared, settings, channel, textures);
+      await compile(lava.object, w);
+      if (w.disposed) return lava.dispose();
+      w.lava = lava;
+      w.modules.push(lava);
+      show(w, lava.object);
+      fade(
+        w,
+        (v) => {
+          lava.setFade(v);
+          w.shared.uLavaGlow.value = v;
+        },
+        instant,
+      );
+    } else if (layer === 4) {
+      const embers = mod.buildEmbers(w.shared, settings, channel);
+      embers.setMaxCount(extras ? settings.embers : Math.round(settings.embers * BASE_EMBER_SHARE));
+      await compile(embers.object, w);
+      if (w.disposed) return embers.dispose();
+      w.embers = embers;
+      w.modules.push(embers);
+      show(w, embers.object);
+      fade(w, (v) => embers.setFade(v), instant);
+    } else if (layer === 5) {
+      if (settings.post === 'none' || options.debugNoPost) return;
+      const post = mod.buildPost(renderer, w.scene, w.camera, settings, halfFloat);
+      try {
+        post.composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1, false);
+        // The scene's materials drawing into the chain's target are new programs
+        // (no tone mapping, linear output): compile them, and the chain's own.
+        renderer.setRenderTarget(post.inputBuffer);
+        const scenePrograms = renderer.compileAsync(w.scene, w.camera);
+        renderer.setRenderTarget(null);
+        const quads = mod.quadScene(post.materials());
+        await Promise.race([
+          Promise.all([scenePrograms, renderer.compileAsync(quads.scene, w.camera)]),
+          sleep(COMPILE_TIMEOUT_MS),
+        ]);
+        quads.dispose();
+        if (shaderLogs.length) throw new Error(`shader compile/link failed: ${shaderLogs[0]}`);
+        // Hidden check: the chain's framebuffer must be complete.
+        renderer.setRenderTarget(post.inputBuffer);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        renderer.setRenderTarget(null);
+        if (status !== gl.FRAMEBUFFER_COMPLETE)
+          throw new Error(`framebuffer incomplete (0x${status.toString(16)})`);
+      } catch (error) {
+        post.dispose();
+        shaderLogs.length = 0;
+        issue(`post-processing unavailable, continuing without it: ${errorText(error)}`);
+        return;
+      }
+      if (w.disposed) return post.dispose();
+      w.post = post;
+      w.postActive = true;
+      // The CSS wash hands over to the WashEffect.
+      options.onWash?.(0, '');
+      lastWashCss = '';
+      fade(w, (v) => (post.fade = v), instant);
+      resize();
+    }
+    w.layer = Math.max(w.layer, layer);
+  };
+
+  /** Every layer at once (poster capture, and in-place tier changes). */
+  const buildAll = async (w: World) => {
+    for (const layer of [2, 3, 4, 5]) await addLayer(w, layer, true);
+    w.layer = 6;
+  };
 
   // ── Sizing ─────────────────────────────────────────────────────────────
-  let drawingHeight = 1;
   const resize = () => {
+    const w = world;
+    if (!w) return;
     const width = Math.max(1, canvas.clientWidth);
     const height = Math.max(1, canvas.clientHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, settings.dpr);
+    // The tier's DPR cap, then the resolution scale. CSS stretches the canvas to fill.
+    const dpr = Math.min(window.devicePixelRatio || 1, w.settings.dpr) * scale;
     renderer.setPixelRatio(dpr);
-    composer.setSize(width, height, false);
-    camera.aspect = width / height;
+    if (w.postActive && w.post) w.post.composer.setSize(width, height, false);
+    else renderer.setSize(width, height, false);
+    w.camera.aspect = width / height;
     drawingHeight = height * dpr;
-    camera.updateProjectionMatrix();
+    w.camera.updateProjectionMatrix();
   };
-  resize();
   const resizeObserver = new ResizeObserver(resize);
-  resizeObserver.observe(canvas);
 
   // ── Pointer heat ───────────────────────────────────────────────────────
   const pointerNdc = new Vector2(4, 4);
@@ -210,11 +521,11 @@ export async function createScene(
   const axisBottom = new Vector3(0, 0, 0);
   const axisTop = new Vector3(0, MONOLITH.height, 0);
   const targetPoint = new Vector3(0, -100, 0);
-  const bounds = monolith.bounds;
 
-  const updatePointer = (dt: number) => {
+  const updatePointer = (w: World, dt: number) => {
     let targetHeat = 0;
-    if (Math.abs(pointerNdc.x) <= 1.2 && Math.abs(pointerNdc.y) <= 1.2) {
+    const { camera, monolith } = w;
+    if (pointerOn && Math.abs(pointerNdc.x) <= 1.2 && Math.abs(pointerNdc.y) <= 1.2) {
       ray.origin.setFromMatrixPosition(camera.matrixWorld);
       ray.direction
         .set(pointerNdc.x, pointerNdc.y, 0.5)
@@ -223,12 +534,12 @@ export async function createScene(
         .normalize();
       inverse.copy(monolith.mesh.matrixWorld).invert();
       localRay.copy(ray).applyMatrix4(inverse);
-      if (localRay.intersectBox(bounds, hitPoint)) {
+      if (localRay.intersectBox(monolith.bounds, hitPoint)) {
         targetHeat = 1;
       } else {
         // Near miss: heat the closest part of the stone, fading with distance.
         const d2 = localRay.distanceSqToSegment(axisBottom, axisTop, onRay, onAxis);
-        bounds.clampPoint(onRay, hitPoint);
+        monolith.bounds.clampPoint(onRay, hitPoint);
         const gap = Math.max(0, Math.sqrt(d2) - MONOLITH.width / 2);
         targetHeat = Math.exp(-(gap * gap) / 5);
       }
@@ -243,68 +554,63 @@ export async function createScene(
     state.pointerHeat += (targetHeat - state.pointerHeat) * (1 - Math.exp(-dt * rate));
   };
 
-  // ── Loop ───────────────────────────────────────────────────────────────
-  let raf = 0;
-  let running = false;
-  let disposed = false;
-  let firstFrame = false;
-  let last = 0;
-  const drift = new Vector3();
-
-  // Re-evaluate the tier once, using frames between 1s and 3s of running time.
-  let runningTime = 0;
-  let sampledFrames = 0;
-  let sampledTime = 0;
-  let evaluated = Boolean(capture) || Boolean(options.fixedTier);
-
-  const evaluate = () => {
-    evaluated = true;
-    if (!sampledFrames) return;
-    const average = (sampledTime / sampledFrames) * 1000;
-    if (average <= DOWNGRADE_FRAME_MS[tier]) return;
-    if (tier === 'high') {
-      tier = 'medium';
-      settings = TIER_SETTINGS.medium;
-      composer.multisampling = settings.msaa;
-      embers.setMaxCount(settings.embers);
-      resize();
-      options.onTierChange?.('medium');
-    } else {
-      options.onTierChange?.('low');
-    }
-  };
-
-  const palette = shared;
-  const applyWash = (dive: number) => {
+  // ── Wash ───────────────────────────────────────────────────────────────
+  const washColor = new Color();
+  let lastWashCss = '';
+  let washAmount = 0;
+  const applyWash = (w: World, dive: number) => {
     // Rises to molten light at the peak (0.5), cools through lava and magma by
     // 0.75 (the CTA may appear from here), and reaches basalt at 1.
+    const palette = w.shared;
     if (dive <= 0) {
-      wash.amount = 0;
-      return;
-    }
-    const color = wash.color;
-    if (dive < 0.5) {
-      wash.amount = MathUtils.smoothstep(dive, 0.22, 0.5);
-      color.copy(palette.uLavaHot.value);
+      washAmount = 0;
+    } else if (dive < 0.5) {
+      washAmount = MathUtils.smoothstep(dive, 0.22, 0.5);
+      washColor.copy(palette.uLavaHot.value);
     } else if (dive < 0.75) {
-      wash.amount = 1;
+      washAmount = 1;
       const t = (dive - 0.5) / 0.25;
-      if (t < 0.5) color.lerpColors(palette.uLavaHot.value, palette.uLava.value, t * 2);
-      else color.lerpColors(palette.uLava.value, palette.uMagma.value, (t - 0.5) * 2);
+      if (t < 0.5) washColor.lerpColors(palette.uLavaHot.value, palette.uLava.value, t * 2);
+      else washColor.lerpColors(palette.uLava.value, palette.uMagma.value, (t - 0.5) * 2);
     } else {
-      wash.amount = 1;
-      color.lerpColors(
+      washAmount = 1;
+      washColor.lerpColors(
         palette.uMagma.value,
         palette.uBasalt.value,
         MathUtils.smoothstep(dive, 0.75, 1),
       );
     }
+    if (w.postActive && w.post) {
+      w.post.wash.amount = washAmount;
+      w.post.wash.color.copy(washColor);
+    } else if (options.onWash) {
+      // Lite (and before L5): the same colours on a CSS layer over the canvas.
+      const css = washAmount > 0 ? washColor.getStyle() : '';
+      if (css !== lastWashCss) options.onWash(washAmount, css);
+      lastWashCss = css;
+    }
   };
 
+  // ── Frame ──────────────────────────────────────────────────────────────
+  let fadeClock = 0;
   const render = (dt: number) => {
+    const w = world;
+    if (!w) return;
+    const { camera } = w;
     if (!capture) state.time += dt;
     state.delta = dt;
-    shared.uTime.value = state.time;
+    w.shared.uTime.value = state.time;
+
+    // Layer fades, on real time (never frozen by capture).
+    fadeClock += dt * 1000;
+    if (w.fades.length) {
+      w.fades = w.fades.filter((f) => {
+        if (f.start < 0) f.start = fadeClock;
+        const t = Math.min(1, (fadeClock - f.start) / FADE_MS);
+        f.apply(t * t * (3 - 2 * t));
+        return t < 1;
+      });
+    }
 
     // Story position: damped camera progress mapped through the measured chapters.
     cameraProgress += (targetProgress - cameraProgress) * (1 - Math.exp(-dt * PROGRESS_DAMPING));
@@ -323,7 +629,9 @@ export async function createScene(
       camera.updateProjectionMatrix();
     }
     camera.updateMatrixWorld();
-    embers.setPointScale(drawingHeight / (2 * Math.tan(MathUtils.degToRad(camera.fov) / 2)));
+    const pointScale = drawingHeight / (2 * Math.tan(MathUtils.degToRad(camera.fov) / 2));
+    w.embers?.setPointScale(pointScale);
+    w.glow?.setPointScale(pointScale);
 
     // Per-chapter scene state.
     blendChapterState(position, chapterState);
@@ -332,39 +640,337 @@ export async function createScene(
     state.lavaIntensity = chapterState.lavaIntensity;
     state.fissureGain = chapterState.fissureGain;
     state.coreOpen = pose.dive;
-    shared.uGlow.value = chapterState.glow;
+    w.shared.uGlow.value = chapterState.glow;
 
-    applyWash(position.dive);
-    bloom.intensity = BLOOM_INTENSITY + 1.6 * MathUtils.smoothstep(position.dive, 0, 0.5);
-    grain.blendMode.opacity.value = grainOpacity * (1 - wash.amount);
+    applyWash(w, position.dive);
+    if (w.post) {
+      const f = w.post.fade;
+      w.post.bloom.intensity =
+        (BLOOM_INTENSITY + BLOOM_DIVE * MathUtils.smoothstep(position.dive, 0, 0.5)) * f;
+      w.post.vignette.darkness = VIGNETTE_DARKNESS * f;
+      w.post.grain.blendMode.opacity.value = (capture ? 0 : GRAIN_OPACITY) * (1 - washAmount) * f;
+    }
 
-    updatePointer(dt);
-    for (const m of modules) m.update(state);
-    if (options.debugNoPost) renderer.render(scene, camera);
-    else composer.render(dt);
+    updatePointer(w, dt);
+    for (const m of w.modules) m.update(state);
+    timer?.beginFrame();
+    if (w.postActive && w.post) w.post.composer.render(dt);
+    else renderer.render(w.scene, camera);
+    timer?.endFrame();
+  };
+
+  /** Compile L1 and draw it once (hidden behind the poster), then check the context. */
+  const prepareCore = async (w: World) => {
+    resize();
+    storyPosition(cameraProgress, storyMap, position);
+    cameraAt(position, w.camera.aspect, pose);
+    w.camera.position.copy(pose.position);
+    w.camera.lookAt(pose.target);
+    w.camera.updateMatrixWorld();
+    await compile(w.scene, w);
+    render(0);
+    if (shaderLogs.length) throw new Error(`shader compile/link failed: ${shaderLogs[0]}`);
+    if (gl.isContextLost()) throw new Error('WebGL context lost during setup');
+    if (gl.getError() === gl.OUT_OF_MEMORY) throw new Error('out of GPU memory');
+  };
+
+  // ── L1, degrading one tier at a time if a tier can't even start ────────
+  if (TIER_SETTINGS[options.tier].bakedFissures) {
+    // Give the atlas a moment (it loads alongside the scene chunk); if it's
+    // late, the stone starts with its flat glow and the veins ignite on arrival.
+    const pending = loadAtlas();
+    await Promise.race([pending, sleep(capture ? 20000 : 150)]);
+  }
+  const ladder = SCENE_TIERS.slice(0, SCENE_TIERS.indexOf(options.tier) + 1).reverse();
+  for (const tier of ladder) {
+    if (gl.isContextLost()) break;
+    if (TIER_SETTINGS[tier].bakedFissures && !atlasLoad) void loadAtlas();
+    let built: World | null = null;
+    try {
+      shaderLogs.length = 0;
+      built = buildCore(tier);
+      // The fissures start dim and ignite as the poster cross-fades away.
+      if (!capture) built.monolith.setFade(0.3);
+      world = built;
+      await prepareCore(built);
+      break;
+    } catch (error) {
+      issue(`tier ${tier} could not start: ${errorText(error)}`);
+      built?.dispose();
+      world = null;
+      if (tier !== 'lite') ceiling = lowerTier(tier) ?? 'poster';
+    }
+  }
+  if (!world) {
+    noise.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+    throw new Error(
+      gl.isContextLost() ? 'WebGL context lost during setup' : 'no scene tier could start',
+    );
+  }
+  const startWorld: World = world;
+  if (startWorld.tier !== options.tier)
+    options.onTierChange?.(startWorld.tier, 'tier could not start');
+  phase('L1 compiled', `${startWorld.tier}: sky, peaks, monolith`);
+
+  // The atlas arriving after L1 started: the veins ignite from the flat glow.
+  if (startWorld.settings.bakedFissures && !atlas) {
+    void loadAtlas().then((loaded) => {
+      const w = world;
+      if (!loaded || !w || !w.settings.bakedFissures) return;
+      fade(w, (v) => w.monolith.setAtlas(loaded.texture, v), false);
+    });
+  }
+
+  if (capture) {
+    await buildAll(startWorld);
+    resize();
+    render(0);
+  }
+  resizeObserver.observe(canvas);
+
+  // ── Loop, pacing and the controller ───────────────────────────────────
+  let raf = 0;
+  let running = false;
+  let disposed = false;
+  let firstFrame = false;
+  let lastTick = 0;
+  let lastRender = 0;
+  const vsyncs: number[] = [];
+  let vsync = 1000 / 60;
+  let frameIndex = 0;
+  let settleUntilFrame = SETTLE_FRAMES;
+  let samples: number[] = [];
+  let rawMax = 0;
+  let lastDecision = 0;
+  let headroomSince = 0;
+  let switching = false;
+  let gaveUp = false;
+
+  /** Ignore the next frames (a layer, tier or scale just changed). */
+  const unsettle = (frames = SETTLE_FRAMES) => {
+    settleUntilFrame = frameIndex + frames;
+    samples = [];
+    rawMax = 0;
+    headroomSince = 0;
+  };
+
+  const setScale = (next: number, why: string) => {
+    if (options.fixedScale !== undefined) return;
+    const value = Math.round(MathUtils.clamp(next, SCALE_MIN, 1) * 100) / 100;
+    if (value === scale) return;
+    decide(`resolution ${scale.toFixed(2)} → ${value.toFixed(2)} (${why})`);
+    scale = value;
+    resize();
+    unsettle(SETTLE_FRAMES_SMALL);
+    settle();
+  };
+
+  const setExtras = (on: boolean, why: string) => {
+    if (extras === on) return;
+    extras = on;
+    const w = world;
+    if (w) {
+      w.monolith.setExtras(on);
+      w.sky.setExtras(on);
+      w.embers?.setMaxCount(
+        on ? w.settings.embers : Math.round(w.settings.embers * BASE_EMBER_SHARE),
+      );
+    }
+    decide(`extras ${on ? 'on' : 'off'} (${why})`);
+    unsettle(SETTLE_FRAMES_SMALL);
+  };
+
+  /** Rebuild in place at another tier, every layer at once; the old one keeps drawing meanwhile. */
+  const switchTier = async (next: SceneTier, why: string, kind: 'up' | 'down') => {
+    const current = world;
+    if (!current || switching) return;
+    switching = true;
+    decide(`tier ${current.tier} → ${next} (${why})`);
+    try {
+      if (TIER_SETTINGS[next].bakedFissures) {
+        await Promise.race([loadAtlas(), sleep(10000)]);
+      }
+      shaderLogs.length = 0;
+      const w = buildCore(next);
+      try {
+        w.camera.copy(current.camera);
+        await compile(w.scene, w);
+        await buildAll(w);
+      } catch (error) {
+        w.dispose();
+        throw error;
+      }
+      if (disposed || world !== current) {
+        w.dispose();
+        return;
+      }
+      w.monolith.setExtras(extras);
+      w.sky.setExtras(extras);
+      world = w;
+      // A full extras state carries over; pointer heat is on from L6 anyway.
+      current.dispose();
+      if (!w.postActive) options.onWash?.(0, '');
+      lastWashCss = '';
+      if (kind === 'up') upgraded.add(next);
+      else ceiling = next;
+      resize();
+      unsettle();
+      options.onTierChange?.(next, why);
+      settle();
+    } catch (error) {
+      issue(`tier ${next} failed: ${errorText(error)}`);
+      if (kind === 'up') ceiling = current.tier;
+      else options.onTierChange?.('poster', `${why}; ${next} failed: ${errorText(error)}`);
+      settle();
+    } finally {
+      switching = false;
+    }
+  };
+
+  const canUpgrade = (w: World): SceneTier | null => {
+    if (options.fixedTier || capture) return null;
+    const next = higherTier(w.tier);
+    if (!next || upgraded.has(next) || ceiling === 'poster') return null;
+    if (SCENE_TIERS.indexOf(next) > SCENE_TIERS.indexOf(ceiling)) return null;
+    return next;
+  };
+
+  /**
+   * Evidence the next tier would hold its frame rate. With GPU timer queries:
+   * this tier's GPU time well under the next tier's frame budget. Without
+   * them, only Lite (capped at 30 fps) can show headroom: every vsync arrived
+   * on time, so a frame costs less than one refresh.
+   */
+  const upgradeEvidence = (w: World, next: SceneTier) => {
+    const gpu = timer?.read();
+    const nextBudget = 1000 / TIER_SETTINGS[next].fps;
+    if (gpu && gpu.samples > 20 && gpu.ms.frame !== undefined)
+      return gpu.ms.frame < nextBudget * 0.35;
+    return w.settings.fps === 30 && rawMax > 0 && rawMax < vsync * 1.3;
+  };
+
+  const control = (w: World, interval: number, now: number) => {
+    if (capture || switching || frameIndex < settleUntilFrame || w.fades.length) return;
+    samples.push(interval);
+    if (now - lastDecision < DECISION_MS || samples.length < 8) return;
+    lastDecision = now;
+    const average = samples.reduce((a, b) => a + b, 0) / samples.length;
+    lastFrameMs = average;
+    samples = [];
+    const budget = 1000 / w.settings.fps;
+
+    if (average > budget * 1.15) {
+      headroomSince = 0;
+      const why = `frame ${average.toFixed(1)} ms > ${(budget * 1.15).toFixed(1)}`;
+      if (scale > SCALE_MIN + 1e-3) setScale(scale - SCALE_DOWN, why);
+      else if (extras) setExtras(false, why);
+      else if (!options.fixedTier) {
+        const lower = lowerTier(w.tier);
+        if (lower) void switchTier(lower, why, 'down');
+        else if (average > 1000 / POSTER_FPS && !gaveUp) {
+          gaveUp = true;
+          decide(`poster (${why} at minimum resolution)`);
+          options.onTierChange?.(
+            'poster',
+            `lite can't hold ${POSTER_FPS} fps at half resolution (${why})`,
+          );
+        }
+      }
+      rawMax = 0;
+      return;
+    }
+    if (average > budget * 1.05) {
+      headroomSince = 0;
+      rawMax = 0;
+      return;
+    }
+    if (!headroomSince) {
+      headroomSince = now;
+      rawMax = 0;
+    }
+    const held = now - headroomSince;
+    if (scale < 1 && held >= SCALE_UP_HOLD_MS) {
+      setScale(
+        scale + SCALE_UP,
+        `holding ${average.toFixed(1)} ms for ${(held / 1000).toFixed(1)} s`,
+      );
+    } else if (!extras && w.layer >= 6 && held >= EXTRAS_HOLD_MS) {
+      setExtras(true, 'frame budget allows');
+    } else if (scale >= 1 && extras && held >= UPGRADE_HOLD_MS) {
+      const next = canUpgrade(w);
+      if (next && upgradeEvidence(w, next)) {
+        void switchTier(
+          next,
+          `headroom for ${(held / 1000).toFixed(0)} s at full resolution`,
+          'up',
+        );
+      } else {
+        // Settled where it is: remember it for this session.
+        settle();
+        headroomSince = now;
+        rawMax = 0;
+      }
+    }
   };
 
   const tick = (now: number) => {
     if (!running) return;
     raf = requestAnimationFrame(tick);
-    const dt = Math.min((now - last) / 1000, 0.1);
-    last = now;
-    render(dt);
+    const raw = now - lastTick;
+    lastTick = now;
+    // The display's refresh interval, from recent rAF gaps.
+    if (raw > 3 && raw < 60) {
+      vsyncs.push(raw);
+      if (vsyncs.length > 30) vsyncs.shift();
+      vsync = [...vsyncs].sort((a, b) => a - b)[vsyncs.length >> 1] ?? vsync;
+    }
+    rawMax = Math.max(rawMax, raw);
+
+    const w = world;
+    if (!w) return;
+    // Frame pacing: render on whole vsyncs only, evenly, at the tier's rate.
+    const budget = 1000 / w.settings.fps;
+    const since = now - lastRender;
+    if (firstFrame && since < budget - vsync * 0.5) return;
+    lastRender = now;
+    render(Math.min(since, 100) / 1000);
+    frameIndex++;
 
     if (!firstFrame) {
       firstFrame = true;
       // Wait one more frame so the cross-fade starts from a frame that is on screen.
       requestAnimationFrame(() => options.onFirstFrame?.());
+      if (!capture) void progressive(w);
+      return;
     }
+    control(w, since, now);
+  };
 
-    if (!evaluated) {
-      runningTime += dt;
-      if (runningTime > 1) {
-        sampledFrames++;
-        sampledTime += dt;
+  /** L2–L6, each once the previous one has faded in; L1 is already on screen. */
+  const progressive = async (w: World) => {
+    // L1's fissures ignite as the poster cross-fades away.
+    fade(w, (v) => w.monolith.setFade(0.3 + 0.7 * v), false);
+    const names = ['', '', 'L2 terrain', 'L3 lava', 'L4 embers', 'L5 post-processing'];
+    for (const layer of [2, 3, 4, 5]) {
+      try {
+        await addLayer(w, layer, false);
+      } catch (error) {
+        issue(`${names[layer]} failed: ${errorText(error)}`);
+        shaderLogs.length = 0;
       }
-      if (runningTime > 3) evaluate();
+      if (w.disposed || world !== w) return;
+      if (w.layer >= layer) phase(names[layer]!, w.tier);
+      unsettle();
+      await sleep(FADE_MS + 100);
     }
+    if (w.disposed || world !== w) return;
+    // L6: pointer heat always; the optional detail only if the budget allows.
+    pointerOn = true;
+    w.layer = 6;
+    if (scale >= (options.startScale ?? 1) - 1e-3) setExtras(true, 'L6');
+    phase('L6 extras', extras ? 'on' : 'deferred');
   };
 
   const pause = () => {
@@ -375,26 +981,52 @@ export async function createScene(
   const resume = () => {
     if (running || disposed) return;
     running = true;
-    last = performance.now();
+    lastTick = performance.now();
+    lastRender = 0;
+    unsettle();
     raf = requestAnimationFrame(tick);
   };
 
   const onContextLost = (event: Event) => {
-    event.preventDefault();
+    event.preventDefault(); // allow the browser to restore it
     pause();
-    options.onTierChange?.('low');
+    options.onContextLost?.();
   };
+  const onContextRestored = () => options.onContextRestored?.();
   canvas.addEventListener('webglcontextlost', onContextLost);
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
 
-  // Compile every shader up front without blocking (KHR_parallel_shader_compile).
-  storyPosition(cameraProgress, storyMap, position);
-  cameraAt(position, camera.aspect, pose);
-  camera.position.copy(pose.position);
-  camera.lookAt(pose.target);
-  camera.updateMatrixWorld();
-  await renderer.compileAsync(scene, camera);
+  const describe = () => {
+    const w = world;
+    if (!w) return 'none';
+    const post = w.postActive ? `post, ${halfFloat ? 'half-float' : '8-bit'}` : 'no post';
+    return `${w.tier}, ${post}`;
+  };
 
   return {
+    get description() {
+      return describe();
+    },
+    get tier() {
+      return world?.tier ?? options.tier;
+    },
+    get cameraProgress() {
+      return cameraProgress;
+    },
+    gpuTimings: () => timer?.read() ?? null,
+    stats() {
+      const w = world;
+      if (!w) return [];
+      const dpr = Math.min(window.devicePixelRatio || 1, w.settings.dpr);
+      const layer = w.layer >= 6 ? 'L1–L6' : `L1–L${w.layer}`;
+      return [
+        `setup ${describe()} · ${layer}${atlas ? ` · atlas ${atlas.source}` : ''}`,
+        `scale ${scale.toFixed(2)} × dpr ${dpr.toFixed(2)} = ${(scale * dpr).toFixed(2)}` +
+          (options.fixedScale !== undefined ? ' (fixed)' : ''),
+        `target ${w.settings.fps} fps · frame ${lastFrameMs ? lastFrameMs.toFixed(1) : '…'} ms · extras ${extras ? 'on' : 'off'}`,
+        ...decisions.map((d) => `· ${d}`),
+      ];
+    },
     setProgress(p, immediate = false) {
       if (capture) return;
       targetProgress = MathUtils.clamp(p, 0, 1);
@@ -412,16 +1044,21 @@ export async function createScene(
     },
     pause,
     resume,
-    dispose() {
+    dispose({ loseContext = true } = {}) {
       if (disposed) return;
       disposed = true;
       pause();
       resizeObserver.disconnect();
       canvas.removeEventListener('webglcontextlost', onContextLost);
-      for (const m of modules) m.dispose();
-      composer.dispose();
+      canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      timer?.dispose();
+      world?.dispose();
+      world = null;
+      noise.dispose();
+      cells?.dispose();
+      void atlasLoad?.then((loaded) => loaded?.dispose());
       renderer.dispose();
-      renderer.forceContextLoss();
+      if (loseContext) renderer.forceContextLoss();
     },
   };
 }

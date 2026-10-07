@@ -8,7 +8,7 @@ import {
 } from 'three';
 import type { Channel } from './channel';
 import { rng } from './noise';
-import { terrainHeight } from './terrain';
+import { terrainHeight } from './ground';
 import type { SceneModule, SceneState } from './types';
 import { FRAGMENT_PRELUDE, type SharedUniforms } from './uniforms';
 import vertexShader from './shaders/embers.vert?raw';
@@ -17,8 +17,10 @@ import fragmentShader from './shaders/embers.frag?raw';
 export interface EmbersModule extends SceneModule {
   /** Pixels per world unit at distance 1: viewport height / (2 tan(fov / 2)). */
   setPointScale(scale: number): void;
-  /** Cap the live particle count (used when dropping a quality tier). */
+  /** Cap the live particle count (dropped as an optional extra under load). */
   setMaxCount(count: number): void;
+  /** 0..1: the embers appear as the layer fades in. */
+  setFade(value: number): void;
 }
 
 /**
@@ -65,6 +67,7 @@ export function createEmbers(
   const uniforms = {
     ...shared,
     uDensity: { value: 1 },
+    uFade: { value: 1 },
     uPointScale: { value: 800 },
     uWind: { value: new Vector2(0.18, -0.06) },
   };
@@ -87,6 +90,9 @@ export function createEmbers(
     object: points,
     setPointScale(scale) {
       uniforms.uPointScale.value = scale;
+    },
+    setFade(value) {
+      uniforms.uFade.value = value;
     },
     setMaxCount(max) {
       geometry.setDrawRange(0, Math.min(count, max));
