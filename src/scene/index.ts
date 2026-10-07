@@ -941,10 +941,7 @@ export async function createScene(
     if (!firstFrame) {
       firstFrame = true;
       // Wait one more frame so the cross-fade starts from a frame that is on screen.
-      requestAnimationFrame(() => {
-        options.onFirstFrame?.();
-        phase('first frame', w.tier);
-      });
+      requestAnimationFrame(() => options.onFirstFrame?.());
       if (!capture) void progressive(w);
       return;
     }

@@ -162,7 +162,8 @@ function storyMode(): StoryMode {
 
 /**
  * The single place the tier changes. Starts or stops the scene and re-modes the
- * story. `fromScene`: the running scene already switched itself (in place).
+ * story. `fromScene`: the running scene decided (it has already switched itself
+ * in place, or gave up for the poster); remembered for this session.
  */
 function setTier(next: QualityTier, reason: string, fromScene = false) {
   const wasPending = pending;
@@ -289,7 +290,9 @@ function armFirstFrameCheck() {
     // Not running (tab hidden, scrolled past the story): nothing to judge yet.
     if (document.hidden || !anchorVisible) return armFirstFrameCheck();
     sceneBlocked = 'no first frame';
-    teardownScene(`no frame rendered within ${FIRST_FRAME_TIMEOUT_MS}ms of starting`);
+    const reason = `no frame rendered within ${FIRST_FRAME_TIMEOUT_MS}ms of starting`;
+    writeTierCache({ tier: 'poster', reason });
+    teardownScene(reason);
   }, FIRST_FRAME_TIMEOUT_MS);
 }
 
@@ -321,7 +324,9 @@ function onContextLost() {
   clearTimeout(restoreTimer);
   restoreTimer = window.setTimeout(() => {
     sceneBlocked = 'context lost';
-    teardownScene(`GPU context lost and not restored within ${CONTEXT_RESTORE_TIMEOUT_MS}ms`);
+    const reason = `GPU context lost and not restored within ${CONTEXT_RESTORE_TIMEOUT_MS}ms`;
+    writeTierCache({ tier: 'poster', reason });
+    teardownScene(reason);
   }, CONTEXT_RESTORE_TIMEOUT_MS);
 }
 
@@ -391,7 +396,7 @@ async function ensureScene() {
           ceiling: settled.ceiling,
           upgraded: settled.upgraded,
         }),
-      onTierChange: (next, reason) => setTier(next, reason, isSceneTier(next)),
+      onTierChange: (next, reason) => setTier(next, reason, true),
       onContextLost,
       onContextRestored,
       onWash: setWash,

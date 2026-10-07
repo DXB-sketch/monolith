@@ -131,7 +131,7 @@ void main() {
 #endif
 
   // No atlas (still loading, or failed): a flat inner glow, never a blank stone.
-  emission += mix(uEmber, uLava, 0.4) * (1.0 - uAtlasReady) * 0.22 * pulse * hotter * uFissureGain;
+  emission += mix(uMagma, uLava, 0.3) * (1.0 - uAtlasReady) * 0.05 * pulse * hotter * uFissureGain;
 
   // A faint warmth in the glass around the pointer, as if heated from inside.
   emission += (uMagma * 1.4 + uLava * 0.06) * pointerHeat * (0.5 + 0.5 * halo);
