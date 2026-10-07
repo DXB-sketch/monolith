@@ -18,7 +18,8 @@
     "posters": "node scripts/render-posters.mjs",
     "bake": "tsx scripts/bake-fissures.ts",
     "placeholders": "tsx scripts/make-placeholders.ts",
-    "check:camera": "tsx scripts/check-camera-path.ts"
+    "check:camera": "tsx scripts/check-camera-path.ts",
+    "test:contact": "tsx scripts/test-contact.ts"
   },
   "dependencies": {
     "@astrojs/vercel": "^11.0.11",
