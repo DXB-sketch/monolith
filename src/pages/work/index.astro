@@ -1,43 +1,308 @@
 ---
+import { Picture } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageIntro from '../../components/PageIntro.astro';
-import FaceCard from '../../components/FaceCard.astro';
-import { PROJECTS } from '../../lib/site';
+import NextStep from '../../components/NextStep.astro';
+import { CONCEPT_NOTE, getWork } from '../../lib/work';
+
+const work = await getWork();
+const pad = (n: number) => String(n).padStart(2, '0');
 ---
 
-<BaseLayout title="Work" description="Selected websites designed and built by Monolith Web Studio.">
+<BaseLayout
+  title="Work"
+  description="Websites designed and built by Monolith Web Studio for clubs, musicians and local businesses in South East Queensland, plus clearly labelled concepts."
+>
   <PageIntro
     eyebrow="Work"
     title="Sites built"
     accent="to stand."
     lead="Real projects for real local organisations, plus clearly labelled concepts."
   />
-  <section class="work-list" aria-label="Projects">
-    <ul class="container work-list__grid">
-      {PROJECTS.map((project) => (
-        <li>
-          <FaceCard project={project} level={2} />
-        </li>
+
+  <section class="work" aria-labelledby="work-title">
+    <div class="container">
+      <h2 id="work-title" class="visually-hidden">
+        Projects
+      </h2>
+      <ol class="work-list" data-work-list>
+        {work.map((entry, index) => (
+          <li class="work-row" data-reveal>
+            <a class="work-row__link" href={`/work/${entry.id}`} data-preview-index={index}>
+              <span class="work-row__num label" aria-hidden="true">
+                {pad(index + 1)}
+              </span>
+              <span class="work-row__title">{entry.data.title}</span>
+              <span class="work-row__meta">
+                <span class="label">{entry.data.clientType}</span>
+                <span class="label">{entry.data.year}</span>
+                {entry.data.isConcept && <span class="work-row__badge label">Concept</span>}
+              </span>
+              {entry.data.isConcept && <span class="work-row__note">{CONCEPT_NOTE}</span>}
+              {/* Keyboard focus and touch screens: a static thumbnail in the row. */}
+              <span class="work-row__thumb" aria-hidden="true">
+                <Picture
+                  src={entry.data.cover}
+                  alt=""
+                  formats={['avif', 'webp']}
+                  widths={[320, 640]}
+                  sizes="(min-width: 48rem) 20rem, 90vw"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </div>
+
+    {/* Fine pointers: a floating preview of the cover follows the pointer. */}
+    <div class="work-preview" aria-hidden="true" data-work-preview>
+      {work.map((entry, index) => (
+        <div class="work-preview__item" data-preview-item={index}>
+          <Picture
+            src={entry.data.cover}
+            alt=""
+            formats={['avif', 'webp']}
+            widths={[480, 960]}
+            sizes="30rem"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
       ))}
-    </ul>
+    </div>
   </section>
+
+  <NextStep />
 </BaseLayout>
 
+<script>
+  /**
+   * The floating cover preview: desktop with a fine pointer only, never with
+   * reduced motion or for keyboard focus. Follows the pointer with light inertia.
+   */
+  function initPreview() {
+    const list = document.querySelector<HTMLElement>('[data-work-list]');
+    const preview = document.querySelector<HTMLElement>('[data-work-preview]');
+    if (!list || !preview) return;
+    const fine = matchMedia('(hover: hover) and (pointer: fine)');
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    const items = Array.from(preview.querySelectorAll<HTMLElement>('[data-preview-item]'));
+    const abort = new AbortController();
+    const { signal } = abort;
+
+    let x = 0;
+    let y = 0;
+    let tx = 0;
+    let ty = 0;
+    let raf = 0;
+    let shown = -1;
+
+    const place = () => {
+      preview.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    };
+    const loop = () => {
+      x += (tx - x) * 0.16;
+      y += (ty - y) * 0.16;
+      place();
+      raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.5 ? requestAnimationFrame(loop) : 0;
+    };
+    const show = (index: number) => {
+      if (shown === index) return;
+      shown = index;
+      items.forEach((item, i) => item.classList.toggle('is-active', i === index));
+      preview.classList.toggle('is-visible', index >= 0);
+    };
+
+    list.addEventListener(
+      'pointermove',
+      (event) => {
+        if (event.pointerType !== 'mouse' || !fine.matches || reduced.matches) return show(-1);
+        const link = (event.target as Element).closest<HTMLElement>('[data-preview-index]');
+        tx = event.clientX + 24;
+        ty = event.clientY - 120;
+        if (shown < 0) {
+          // Appear where the pointer is, then follow.
+          x = tx;
+          y = ty;
+          place();
+        }
+        show(link ? Number(link.dataset.previewIndex) : -1);
+        if (!raf) raf = requestAnimationFrame(loop);
+      },
+      { signal },
+    );
+    list.addEventListener('pointerleave', () => show(-1), { signal });
+    // Keyboard focus shows the inline thumbnail instead (CSS).
+    list.addEventListener('focusin', () => show(-1), { signal });
+    window.addEventListener('scroll', () => show(-1), { signal, passive: true });
+    document.addEventListener(
+      'astro:before-swap',
+      () => {
+        abort.abort();
+        cancelAnimationFrame(raf);
+      },
+      { once: true },
+    );
+  }
+
+  document.addEventListener('astro:page-load', initPreview);
+</script>
+
 <style>
-  .work-list {
+  .work {
     position: relative;
-    padding-bottom: var(--space-3xl);
+    padding-bottom: var(--space-xl);
   }
 
-  .work-list__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
-    gap: var(--space-m);
-    margin-block: 0;
+  .work-list {
+    margin: 0;
+    padding: 0;
     list-style: none;
+    border-top: var(--hairline);
   }
 
-  .work-list__grid > li {
+  .work-row {
+    border-bottom: var(--hairline);
+  }
+
+  .work-row__link {
     display: grid;
+    grid-template-columns: 3.5rem 1fr;
+    grid-template-areas:
+      'num title'
+      'num meta'
+      'num note'
+      'num thumb';
+    column-gap: var(--space-s);
+    row-gap: var(--space-2xs);
+    align-items: baseline;
+    padding-block: var(--space-l);
+    color: var(--color-text);
+    text-decoration: none;
+    transition: background-color var(--dur-base) var(--ease-out);
+  }
+
+  .work-row__num {
+    grid-area: num;
+    color: var(--lava);
+  }
+
+  .work-row__title {
+    grid-area: title;
+    font-weight: var(--weight-display);
+    font-size: var(--step-5);
+    line-height: 1;
+    letter-spacing: var(--tracking-display);
+    overflow-wrap: anywhere;
+    transition: color var(--dur-base) var(--ease-out);
+  }
+
+  .work-row__meta {
+    grid-area: meta;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2xs) var(--space-m);
+  }
+
+  .work-row__badge {
+    padding: 0.2em 0.8em;
+    border: 1px solid var(--lava);
+    border-radius: var(--radius-pill);
+    color: var(--bone);
+  }
+
+  .work-row__note {
+    grid-area: note;
+    max-width: var(--measure);
+    font-size: var(--step--1);
+    color: var(--ash);
+  }
+
+  .work-row__thumb {
+    grid-area: thumb;
+    display: none;
+    width: min(20rem, 100%);
+    margin-top: var(--space-xs);
+    border: var(--hairline);
+    border-radius: var(--radius-panel);
+    overflow: hidden;
+  }
+
+  .work-row__thumb :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+  }
+
+  .work-row__link:hover .work-row__title,
+  .work-row__link:focus-visible .work-row__title {
+    color: var(--lava-hot);
+  }
+
+  .work-row__link:focus-visible {
+    outline-offset: 4px;
+  }
+
+  /* Keyboard focus: a static thumbnail in place of the floating preview. */
+  .work-row__link:focus-visible .work-row__thumb {
+    display: block;
+  }
+
+  /* Touch screens have no hover: show the thumbnail in every row. */
+  @media (hover: none), (pointer: coarse) {
+    .work-row__thumb {
+      display: block;
+    }
+  }
+
+  .work-preview {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: var(--z-hud);
+    width: 26rem;
+    aspect-ratio: 16 / 10;
+    pointer-events: none;
+    opacity: 0;
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    overflow: hidden;
+    background: var(--obsidian);
+    transition: opacity var(--dur-base) var(--ease-out);
+  }
+
+  .work-preview.is-visible {
+    opacity: 1;
+  }
+
+  .work-preview__item {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+
+  .work-preview__item.is-active {
+    opacity: 1;
+  }
+
+  .work-preview__item :global(img) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  @media (hover: none), (pointer: coarse), (prefers-reduced-motion: reduce) {
+    .work-preview {
+      display: none;
+    }
   }
 </style>

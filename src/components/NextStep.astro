@@ -1,0 +1,66 @@
+---
+/**
+ * The closing call to action every content page ends with: one clear next step.
+ */
+import { CTA } from '../lib/site';
+
+interface Props {
+  title?: string;
+  accent?: string;
+  text?: string;
+  /** Defaults to Start a project. */
+  href?: string;
+  label?: string;
+}
+
+const {
+  title = 'Have something',
+  accent = 'worth building?',
+  text = 'Tell me what you need and roughly what you’d like to spend. I’ll come back with honest advice.',
+  href = CTA.href,
+  label = CTA.label,
+} = Astro.props;
+---
+
+<section class="next-step" aria-labelledby="next-step-title">
+  <div class="container next-step__inner" data-reveal>
+    <h2 id="next-step-title" class="display-2 next-step__title">
+      {title} <em>{accent}</em>
+    </h2>
+    <p class="lead">{text}</p>
+    <div class="next-step__actions">
+      <a class="btn btn--primary" href={href}>
+        {label}
+        <span class="btn__arrow" aria-hidden="true">
+          →
+        </span>
+      </a>
+      <slot />
+    </div>
+  </div>
+</section>
+
+<style>
+  .next-step {
+    position: relative;
+    padding-block: var(--space-2xl) var(--space-3xl);
+  }
+
+  .next-step__inner {
+    display: grid;
+    gap: var(--space-m);
+    justify-items: start;
+    padding-top: var(--space-xl);
+    border-top: var(--hairline);
+  }
+
+  .next-step__title {
+    max-width: 16ch;
+  }
+
+  .next-step__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-s);
+  }
+</style>
