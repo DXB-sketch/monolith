@@ -11,9 +11,12 @@ import type { AstroIntegration } from 'astro';
 
 /**
  * At least two capital letters inside the brackets and no lowercase, so code
- * like `list[0]` and Markdown links never match.
+ * like `list[0]` and Markdown links never match. Constant keys in code
+ * (`body[HONEYPOT]`, `{ [TOKEN]: value }`) are skipped too. Price stand-ins
+ * like `[$X]` count.
  */
-export const PLACEHOLDER = /\[(?=[^\]\n]*[A-Z]{2})[A-Z0-9$][^\]\na-z]*\]/g;
+export const PLACEHOLDER =
+  /(?<![\w\])])\[(?:(?=[^\]\n]*[A-Z]{2})[A-Z0-9$][^\]\na-z]*|\$[A-Z])\](?!\s*:)/g;
 
 /** Every file under `dir` with one of the extensions. */
 function walk(dir: string, extensions: string[]): string[] {
