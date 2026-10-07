@@ -1,6 +1,7 @@
 /* Global base styles. Imports tokens and type so every page shares one foundation. */
 @import './tokens.css';
 @import './type.css';
+@import './transitions.css';
 
 *,
 *::before,
@@ -117,6 +118,12 @@ a:hover {
   outline: 2px solid var(--color-focus);
   outline-offset: 3px;
   border-radius: var(--radius-panel);
+}
+
+/* Page headings take focus after a page change (lib/page-focus.ts) but are not
+   controls: no ring around a display headline. */
+main h1[tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 /* ── Skip link ──────────────────────────────────────────────────────────── */

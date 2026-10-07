@@ -10,6 +10,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 ---
 
 <BaseLayout
+  view="work"
   footerCta={false}
   title="Work"
   description="Websites designed and built by Monolith Web Studio for clubs, musicians and local businesses in South East Queensland, plus clearly labelled concepts."
@@ -29,11 +30,19 @@ const pad = (n: number) => String(n).padStart(2, '0');
       <ol class="work-list" data-work-list>
         {work.map((entry, index) => (
           <li class="work-row" data-reveal>
-            <a class="work-row__link" href={`/work/${entry.id}`} data-preview-index={index}>
+            <a
+              class="work-row__link"
+              href={`/work/${entry.id}`}
+              data-preview-index={index}
+              data-morph-slug={entry.id}
+              data-cursor="view"
+            >
               <span class="work-row__num label" aria-hidden="true">
                 {pad(index + 1)}
               </span>
-              <span class="work-row__title">{entry.data.title}</span>
+              <span class="work-row__title" data-morph-title>
+                {entry.data.title}
+              </span>
               <span class="work-row__meta">
                 <span class="label">{entry.data.clientType}</span>
                 <span class="label">{entry.data.year}</span>
@@ -41,7 +50,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
               </span>
               {entry.data.isConcept && <span class="work-row__note">{CONCEPT_NOTE}</span>}
               {/* Keyboard focus and touch screens: a static thumbnail in the row (the first is the phone LCP). */}
-              <span class="work-row__thumb" aria-hidden="true">
+              <span class="work-row__thumb" aria-hidden="true" data-morph-cover>
                 <Picture
                   src={entry.data.cover}
                   alt=""
@@ -62,7 +71,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
     {/* Fine pointers: a floating preview of the cover follows the pointer. */}
     <div class="work-preview" aria-hidden="true" data-work-preview>
       {work.map((entry, index) => (
-        <div class="work-preview__item" data-preview-item={index}>
+        <div class="work-preview__item" data-preview-item={index} data-preview-slug={entry.id}>
           <Picture
             src={entry.data.cover}
             alt=""

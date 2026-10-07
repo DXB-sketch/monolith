@@ -18,6 +18,8 @@ const current = (href: string) =>
         <li>
           <a class="nav__link" href={item.href} aria-current={current(item.href)}>
             {item.label}
+            {/* One per page: it slides to the new item as the page changes. */}
+            {current(item.href) && <span class="nav__indicator" aria-hidden="true" />}
           </a>
         </li>
       ))}
@@ -162,10 +164,17 @@ const current = (href: string) =>
     color: var(--bone);
   }
 
-  .nav__link[aria-current] {
-    text-decoration: underline;
-    text-decoration-color: var(--lava);
-    text-underline-offset: 0.5em;
+  .nav__link {
+    position: relative;
+  }
+
+  .nav__indicator {
+    position: absolute;
+    right: 0.9rem;
+    bottom: 0.55rem;
+    left: 0.9rem;
+    height: 1px;
+    background: var(--lava);
   }
 
   .nav__cta {
@@ -285,6 +294,16 @@ const current = (href: string) =>
       font-size: var(--step-1);
       padding-inline: var(--space-s);
       border-radius: var(--radius-panel);
+    }
+
+    :global(html.js) .nav__indicator {
+      top: 50%;
+      right: auto;
+      bottom: auto;
+      left: 0.3rem;
+      width: 2px;
+      height: 1.1em;
+      transform: translateY(-50%);
     }
 
     /* No JavaScript: keep the links visible, wrapped under the pill row. */
