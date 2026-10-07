@@ -1,4 +1,4 @@
-import { Effect } from 'postprocessing';
+import { Effect, EffectAttribute } from 'postprocessing';
 import { Uniform, Vector2, type Texture } from 'three';
 
 /**
@@ -6,9 +6,10 @@ import { Uniform, Vector2, type Texture } from 'three';
  * screen's UVs before anything is sampled:
  *
  * - Haze (High only, SCENE_SPEC.md): a slow shimmer above hot things. The mask
- *   is the bloom texture read a little *below* each pixel, so the air above the
- *   lava channel and behind the burning stone moves, while the cool ground and
- *   the dark sky stay still. A scrolling noise tile drives the distortion.
+ *   is the bloom texture read a little *below* each pixel (heat rises), gated
+ *   by depth to what lies beyond the stone: the air above the lava channel and
+ *   behind the burning stone moves, while the stone itself, the foreground and
+ *   the cool, dark ground stay crisp. A scrolling noise tile drives it.
  * - Shimmer (High and Medium): a brief, unmasked ripple of the whole view
  *   during a page change. Zero the rest of the time, and then skipped.
  *
@@ -22,6 +23,7 @@ uniform float uHeatTime;
 uniform float uHaze;
 uniform float uShimmer;
 uniform vec2 uHeatAspect;
+uniform float uStoneDistance;
 
 void mainUv(inout vec2 uv) {
   float amount = uShimmer * 0.011;
@@ -29,8 +31,13 @@ void mainUv(inout vec2 uv) {
   if (uHaze > 0.0) {
     // Heat rises: what is hot just below this pixel bends the air here.
     vec3 below = texture2D(tHeatMask, uv - vec2(0.0, 0.05)).rgb;
-    float heat = dot(below, vec3(0.3, 0.59, 0.11));
-    amount += smoothstep(0.015, 0.35, heat) * uHaze * 0.0032;
+    float heat = smoothstep(0.01, 0.25, dot(below, vec3(0.3, 0.59, 0.11)));
+    if (heat > 0.0) {
+      // Only what is seen through the hot air: beyond the stone, not the stone.
+      float distance = -getViewZ(readDepth(uv));
+      heat *= smoothstep(uStoneDistance + 3.0, uStoneDistance + 22.0, distance);
+    }
+    amount += heat * uHaze * 0.0045;
   }
 #endif
   if (amount > 0.00002) {
@@ -45,6 +52,8 @@ void mainUv(inout vec2 uv) {
 export class HeatEffect extends Effect {
   constructor(noise: Texture, haze: boolean) {
     super('HeatEffect', fragmentShader, {
+      // Depth only where there is haze to gate (High).
+      attributes: haze ? EffectAttribute.DEPTH : EffectAttribute.NONE,
       defines: new Map([['HAZE', haze ? '1' : '0']]),
       uniforms: new Map<string, Uniform>([
         ['tHeatMask', new Uniform(null)],
@@ -53,6 +62,7 @@ export class HeatEffect extends Effect {
         ['uHaze', new Uniform(haze ? 1 : 0)],
         ['uShimmer', new Uniform(0)],
         ['uHeatAspect', new Uniform(new Vector2(1, 1))],
+        ['uStoneDistance', new Uniform(40)],
       ]),
     });
   }
@@ -72,6 +82,11 @@ export class HeatEffect extends Effect {
 
   set haze(value: number) {
     this.uniforms.get('uHaze')!.value = value;
+  }
+
+  /** Camera distance to the stone's axis, metres: the haze starts beyond it. */
+  set stoneDistance(value: number) {
+    this.uniforms.get('uStoneDistance')!.value = value;
   }
 
   set shimmer(value: number) {

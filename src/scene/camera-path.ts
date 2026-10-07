@@ -173,7 +173,7 @@ export const VIEW_FRAMES: Record<PageView, ChapterFrame> = {
   },
   // Lab: low against the right face, looking up into the ember column.
   lab: {
-    landscape: orbit(FACE_ANGLE.right + 2 * PI + 0.12, 13, 0.6, 18, -5, 50),
+    landscape: orbit(FACE_ANGLE.right + 2 * PI + 0.12, 13, 0.6, 18, -7.2, 50),
     portrait: orbit(FACE_ANGLE.right + 2 * PI + 0.12, 15, 0.6, 21, 0, 60),
   },
   // Contact: the front face, close to the core vein, sitting behind the form (left).

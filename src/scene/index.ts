@@ -797,6 +797,7 @@ export async function createScene(
         if (since > SHIMMER_RISE_MS + SHIMMER_FALL_MS) shimmerAt = -1;
       }
       w.post.heat.time = state.time;
+      w.post.heat.stoneDistance = Math.hypot(camera.position.x, camera.position.z);
       w.post.heat.shimmer = shimmer * f;
       w.post.heat.haze = w.post.hazeCapable && haze ? f * (1 - washAmount) : 0;
     }
