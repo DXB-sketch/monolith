@@ -90,7 +90,17 @@ void main() {
 
   float core = (1.0 - smoothstep(0.0, fwidth(e) * 1.5 + 0.003, e - widen)) * veins;
   float dMain = max(e + 0.02, 0.0);
+#ifdef FAKE_BLOOM
+  // No bloom to soften it: the halo comes from a coarser mip of the same
+  // fields, so it spreads smoothly (and over the breaks along a vein, as
+  // bloom would) instead of tracing every gap.
+  vec4 soft = texture2D(uAtlas, vAtlas, 3.0);
+  float softMain = max(soft.r * soft.r * 0.6 - 0.02, 0.0);
+  float softVeins = clamp(soft.b * uAtlasReady * (1.0 + heat * 0.5), 0.0, 1.0);
+  float halo = exp(-softMain / 0.1) * softVeins;
+#else
   float halo = exp(-dMain / 0.1) * veins;
+#endif
 
   // Branches grow only near the main veins.
   float brMask = (1.0 - smoothstep(0.1, 0.9 + heat * 0.3, dMain)) * veins;
@@ -101,7 +111,11 @@ void main() {
   // The core vein on the front face (analytic, as on High): the dive's target.
   float front = smoothstep(0.6, 0.9, on.z);
   vec2 cp = p.xy - uCorePoint.xy;
-  float dCore = abs(cp.x - vCore.x);
+  // Per vertex is enough from a distance; in the dive, close up, per pixel.
+  float wob = vCore.x;
+  if (uCoreOpen > 0.0)
+    wob = snoise(vec3(p.y * 0.9, 0.0, 3.0)) * 0.32 + snoise(vec3(p.y * 3.6, 1.0, 5.0)) * 0.08;
+  float dCore = abs(cp.x - wob);
   float reach = 2.6 + uCoreOpen * 3.0;
   float coreSpan = 1.0 - smoothstep(reach * 0.35, reach, abs(cp.y));
   float coreW = mix(0.008, 0.035, coreSpan) * vCore.y * (1.0 + uCoreOpen * 9.0);
@@ -123,9 +137,9 @@ void main() {
 #ifdef FAKE_BLOOM
   // No bloom pass on Lite: soft glow around the veins stands in for it, a
   // tight hot one and a broad warm one (as bloom's small and large mips).
-  float tight = exp(-dMain / 0.06) * veins + exp(-dCore / (0.08 + uCoreOpen * 0.6)) * coreSpan * front;
-  float broad = exp(-dMain / 0.35) * veins + exp(-dCore / (0.3 + uCoreOpen * 2.0)) * coreSpan * front * 0.5;
-  emission += (mix(uLava, uLavaHot, 0.35) * tight * 1.1 + mix(uEmber, uLava, 0.55) * broad * 0.55) * intensity;
+  float tight = exp(-dMain / 0.05) * veins + exp(-dCore / (0.08 + uCoreOpen * 0.6)) * coreSpan * front;
+  float broad = exp(-softMain / 0.25) * softVeins * 0.35 + exp(-dCore / (0.3 + uCoreOpen * 2.0)) * coreSpan * front * 0.5;
+  emission += (mix(uLava, uLavaHot, 0.35) * tight * 0.7 + mix(uEmber, uLava, 0.55) * broad * 0.3) * intensity;
   // Without bloom's added light the cores read dimmer: lift them to match.
   emission += coreCol * 0.3 * intensity;
 #endif

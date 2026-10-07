@@ -27,6 +27,7 @@ export function getStaticPaths() {
   </head>
   <body>
     <canvas data-dev-canvas></canvas>
+    <div class="wash" data-dev-wash></div>
     <script>
       import { createScene } from '../../scene/index';
 
@@ -44,6 +45,12 @@ export function getStaticPaths() {
         fixedTier: true,
         fixedScale: Number(params.get('scale') ?? 1),
         onIssue: (message) => console.warn('[scene]', message),
+        // Without a post chain (Lite), the Chapter 04 wash is a CSS layer, as on the site.
+        onWash: (amount, css) => {
+          const wash = document.querySelector<HTMLElement>('[data-dev-wash]')!;
+          wash.style.backgroundColor = css;
+          wash.style.opacity = String(amount);
+        },
         onPhase: (name, detail) => console.info('[scene]', name, detail ?? ''),
         debugHide: params.get('hide')?.split(','),
         debugNoPost: params.has('nopost'),
@@ -72,11 +79,17 @@ export function getStaticPaths() {
         overflow: hidden;
       }
 
-      canvas {
+      canvas,
+      .wash {
         position: fixed;
         inset: 0;
         width: 100%;
         height: 100%;
+      }
+
+      .wash {
+        opacity: 0;
+        pointer-events: none;
       }
     </style>
   </body>

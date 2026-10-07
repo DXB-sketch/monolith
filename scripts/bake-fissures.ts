@@ -11,9 +11,10 @@
  * same veins.
  *
  * Channels (8-bit each):
- *   r: main vein edge distance, e = dMain − width   (sqrt-encoded, −0.04..0.56 m)
+ *   r: main vein edge distance, e = dMain − width, pushed 6 cm out where the
+ *      vein breaks (sqrt-encoded, −0.04..0.56 m)
  *   g: branch edge distance, gated where branches can't grow (same encoding)
- *   b: vein strength (region mask × breaks along the vein)
+ *   b: vein strength (the region mask)
  *   a: pulse phase (snoise, −1..1 → 0..1; never 0, so no encoder alters rgb)
  *
  * Two files:
@@ -74,10 +75,12 @@ void main() {
   vec3 p = point.xyz;
   vec3 q = fissureWarp(p);
   float width = fissureWidth(p);
-  float e = fissureMainDistance(q) - width;
+  // Breaks along each vein push the edge away (6 cm): the bright line breaks,
+  // but its glow carries on through the gap, as bloom gives it on High.
+  float e = fissureMainDistance(q) - width + (1.0 - fissureAlong(p)) * 0.06;
   // Branches the gate rules out are pushed out of reach (5 cm).
   float eb = fissureBranchDistance(q) - width * 0.45 + (1.0 - fissureBranchGate(p)) * 0.05;
-  float strength = smoothstep(-0.12, 0.3, fissureRegion(p)) * fissureAlong(p);
+  float strength = smoothstep(-0.12, 0.3, fissureRegion(p));
   float phase = fissurePhase(p) / 6.2831;
   // Branch light is invisible past ~12 cm (and only near main veins): flatten it.
   eb = min(eb, 0.12);
