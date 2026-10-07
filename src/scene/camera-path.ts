@@ -12,6 +12,10 @@
  * Landscape frames put the stone on the opposite side from that chapter's copy;
  * portrait frames raise it above the copy, which flows at the bottom.
  *
+ * Phase 4 adds a view per content page (VIEW_FRAMES) and glides between any
+ * two framings (story chapters or page views): the same cylindrical
+ * interpolation, taking the short way round, with a higher arc for long moves.
+ *
  * Pure maths (no DOM, no shaders) so it can be tested headlessly.
  */
 import { CatmullRomCurve3, MathUtils, Vector3 } from 'three';
@@ -24,6 +28,7 @@ import {
 } from './dimensions';
 import { terrainHeight } from './ground';
 import { smootherstep, type StoryPosition } from './story-map';
+import type { PageView } from './views';
 
 export interface OrbitFrame {
   /** Angle around the monolith's vertical axis, radians (0 = +z). Decreases through the story. */
@@ -41,7 +46,7 @@ export interface OrbitFrame {
   fov: number;
 }
 
-interface ChapterFrame {
+export interface ChapterFrame {
   landscape: OrbitFrame;
   portrait: OrbitFrame;
 }
@@ -140,6 +145,49 @@ export const CHAPTER_FRAMES: [
   },
 ];
 
+/**
+ * One view per content page, each in landscape and portrait. Landscape keeps
+ * the stone away from the text column (which sits left on every content page);
+ * portrait, where text runs full width, keeps the stone small and high.
+ */
+export const VIEW_FRAMES: Record<PageView, ChapterFrame> = {
+  // Work index: a wide shot from Face I's side, the stone small and to the right.
+  work: {
+    landscape: orbit(FACE_ANGLE.left + 0.42, 78, 6, 10, -22, 34),
+    portrait: orbit(FACE_ANGLE.left + 0.42, 100, 6, -9, 0, 48),
+  },
+  // Case study: close and low on the front-right edge; mostly darkness, one vein at the side.
+  case: {
+    landscape: orbit(ROT + 1.3, 10.5, 1.1, 9.5, -5.6, 40),
+    portrait: orbit(ROT + 1.3, 13, 1, 14, -3.4, 54),
+  },
+  // Services: standing over the lava channel, looking up the flow toward the stone.
+  services: {
+    landscape: orbit(-0.44, 45, 2.4, 5.5, -9, 36),
+    portrait: orbit(-0.44, 60, 7, 12, 0, 50),
+  },
+  // About: far out on the ridge line, the stone small on the plain, the peaks behind.
+  about: {
+    landscape: orbit(0.22, 175, 14, 9, -34, 30),
+    portrait: orbit(0.22, 200, 16, -16, 0, 44),
+  },
+  // Lab: low against the right face, looking up into the ember column.
+  lab: {
+    landscape: orbit(FACE_ANGLE.right + 2 * PI + 0.12, 13, 0.6, 18, -5, 50),
+    portrait: orbit(FACE_ANGLE.right + 2 * PI + 0.12, 15, 0.6, 21, 0, 60),
+  },
+  // Contact: the front face, close to the core vein, sitting behind the form (left).
+  contact: {
+    landscape: orbit(ROT - 0.12, 13, 7.2, 8.4, 5.2, 40),
+    portrait: orbit(ROT - 0.12, 32, 6, -2, 0, 50),
+  },
+  // 404: from beyond the far edge of the plain; the ground falls away in front.
+  notfound: {
+    landscape: orbit(0.1, 300, 26, -2, -44, 32),
+    portrait: orbit(0.1, 320, 30, -24, 0, 46),
+  },
+};
+
 const lerp = MathUtils.lerp;
 
 /** 0 for portrait, 1 for landscape, blended in between. */
@@ -176,6 +224,61 @@ export function orbitAt(
   blendFrames(from.portrait, from.landscape, w, scratchA);
   blendFrames(to.portrait, to.landscape, w, scratchB);
   return blendFrames(scratchA, scratchB, t, out);
+}
+
+/** The orbit frame for a page view, at this aspect ratio. */
+export function viewAt(view: PageView, aspect: number, out: OrbitFrame = orbit(0, 0, 0, 0, 0, 0)) {
+  const frame = VIEW_FRAMES[view];
+  return blendFrames(frame.portrait, frame.landscape, landscapeWeight(aspect), out);
+}
+
+export function createFrame(): OrbitFrame {
+  return orbit(0, 0, 0, 0, 0, 0);
+}
+
+export function copyFrame(from: OrbitFrame, out: OrbitFrame) {
+  return blendFrames(from, from, 0, out);
+}
+
+/** Shortest signed angle from a to b, radians. */
+function angleBetween(a: number, b: number) {
+  const d = (b - a) % (2 * PI);
+  return d > PI ? d - 2 * PI : d < -PI ? d + 2 * PI : d;
+}
+
+/** How long a glide between two frames takes: longer for longer moves, never over 850 ms. */
+export function glideDuration(from: OrbitFrame, to: OrbitFrame) {
+  const turn = Math.abs(angleBetween(from.theta, to.theta)) / PI;
+  const reach = Math.abs(to.radius - from.radius) / 150;
+  return Math.round(550 + 300 * MathUtils.clamp(turn + reach, 0, 1));
+}
+
+/**
+ * A frame partway through a glide (t eased 0..1), the short way round. Long
+ * moves (a big turn or a big change of distance) rise on a higher, wider arc,
+ * so the motion stays readable and the camera passes well clear of the stone.
+ */
+export function glideFrame(from: OrbitFrame, to: OrbitFrame, t: number, out: OrbitFrame) {
+  const turn = angleBetween(from.theta, to.theta);
+  blendFrames(from, to, t, out);
+  out.theta = from.theta + turn * t;
+  const arc =
+    (MathUtils.clamp(Math.abs(turn) / PI, 0, 1) * 10 +
+      MathUtils.clamp(Math.abs(to.radius - from.radius) / 80, 0, 1) * 4) *
+    Math.sin(PI * t);
+  out.height += arc;
+  out.radius += arc * 0.8;
+  out.targetHeight += arc * 0.5;
+  return out;
+}
+
+/** Camera pose for an orbit frame (a page view or a glide), with the usual clearances. */
+export function poseFromFrame(frame: OrbitFrame, out: CameraPose): CameraPose {
+  placeOrbit(frame, out.position, out.target);
+  out.fov = frame.fov;
+  out.dive = 0;
+  out.clearance = clearanceFrom(out.position);
+  return out;
 }
 
 const inverse = MONOLITH_MATRIX.clone().invert();

@@ -47,6 +47,8 @@
   <div class="stage__look"></div>
   <!-- Chapter 04's wash, drawn here whenever the scene runs without post-processing. -->
   <div class="stage__wash" data-scene-wash></div>
+  <!-- Content pages: darken the scene on the text's side so the page leads. -->
+  <div class="stage__scrim"></div>
 </div>
 
 <style>
@@ -126,9 +128,54 @@
     opacity: 1;
   }
 
-  /* Scrolled past the scene region, or on a page without a scene: rest dimly. */
+  /* Home, scrolled past the story: rest dimly. */
   .stage:global(.is-dormant) {
     opacity: 0.32;
+  }
+
+  /*
+   * Content pages show their own view of the stone, calmer than the story:
+   * the whole stage is held down a little, and a scrim darkens the side the
+   * text sits on (left in landscape; everywhere in portrait, top lightest).
+   * Contrast behind every main text block is measured in PHASE_4_COMPLETE.md.
+   */
+  .stage:global(.is-view) {
+    opacity: var(--view-stage-opacity);
+  }
+
+  .stage__scrim {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: linear-gradient(
+      90deg,
+      rgb(var(--basalt-rgb) / 0.86) 0%,
+      rgb(var(--basalt-rgb) / 0.78) 38%,
+      rgb(var(--basalt-rgb) / 0.35) 68%,
+      rgb(var(--basalt-rgb) / 0.12) 100%
+    );
+    transition: opacity var(--dur-slow) var(--ease-out);
+  }
+
+  @media (orientation: portrait) {
+    .stage__scrim {
+      background: linear-gradient(
+        180deg,
+        rgb(var(--basalt-rgb) / 0.45) 0%,
+        rgb(var(--basalt-rgb) / 0.78) 35%,
+        rgb(var(--basalt-rgb) / 0.86) 100%
+      );
+    }
+  }
+
+  .stage:global(.is-view) .stage__scrim {
+    opacity: 1;
+  }
+
+  /* During a page change the stone dips briefly, so the change reads as intentional. */
+  .stage:global(.is-navigating) {
+    opacity: var(--nav-stage-opacity);
+    transition: opacity var(--dur-fast) var(--ease-out);
   }
 
   /* Poster tier: no WebGL, a gentle scroll-linked drift on the poster in pure CSS. */

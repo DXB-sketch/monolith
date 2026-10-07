@@ -7,6 +7,7 @@ import SceneStage from '../components/SceneStage.astro';
 import Intro from '../components/Intro.astro';
 import { SITE } from '../lib/site';
 import { PALETTE_HEX } from '../scene/palette';
+import type { PageView } from '../scene/views';
 
 interface Props {
   title?: string;
@@ -15,9 +16,11 @@ interface Props {
   mainClass?: string;
   /** The footer's "Start a project" lead; off where the page ends on its own CTA or is the form. */
   footerCta?: boolean;
+  /** This page's view of the stone (content pages); the home page follows its story instead. */
+  view?: PageView;
 }
 
-const { title, description = SITE.description, mainClass, footerCta = true } = Astro.props;
+const { title, description = SITE.description, mainClass, footerCta = true, view } = Astro.props;
 const fullTitle = title ? `${title} · ${SITE.name}` : `${SITE.name} · Wamuran, Queensland`;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 ---
@@ -79,7 +82,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
         }
       })();
     </script>
-    <ClientRouter fallback="none" />
+    <!-- Browsers without View Transitions get a plain cross-fade (styles/transitions.css). -->
+    <ClientRouter fallback="animate" />
   </head>
   <body>
     <Intro />
@@ -92,7 +96,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 
     <Nav />
 
-    <main id="main" tabindex="-1" class:list={['main', mainClass]}>
+    <main id="main" tabindex="-1" class:list={['main', mainClass]} data-scene-view={view}>
       <slot />
     </main>
 
@@ -100,7 +104,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 
     <script>
       import { initSceneBoot } from '../lib/scene-boot';
+      import { initMorphs } from '../lib/morph';
+      import { initPageFocus } from '../lib/page-focus';
       initSceneBoot();
+      initMorphs();
+      initPageFocus();
 
       // Dev overlay for real-device testing. Only fetched when ?fps is in the URL.
       if (new URLSearchParams(location.search).has('fps')) {

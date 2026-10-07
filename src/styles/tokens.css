@@ -112,6 +112,10 @@
   --dur-fade: 1200ms;
 
   /* ── Layers ─────────────────────────────────────────────────────────── */
+  /* The scene behind content pages, and its brief dip during a page change. */
+  --view-stage-opacity: 0.72;
+  --nav-stage-opacity: 0.38;
+
   --z-scene: 0;
   --z-content: 1;
   --z-hud: 20;
