@@ -28,17 +28,17 @@
   // opens it earlier (scene ready, after at least 400 ms; or any input) and
   // tidies up afterwards.
   (function () {
-    var root = document.documentElement;
+    const root = document.documentElement;
     if (!root.classList.contains('intro-on')) return;
-    var MIN = 400;
-    var MAX = 800;
-    var SPLIT = 700;
-    var start = Number(root.dataset.introAt) || performance.now();
-    var opened = false;
-    var inputs = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
-    var elapsed = function () {
-      return performance.now() - start;
-    };
+    const MIN = 400;
+    const MAX = 800;
+    const SPLIT = 700;
+    const start = Number(root.dataset.introAt) || performance.now();
+    let opened = false;
+    const inputs = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    const elapsed = function () {
+    return performance.now() - start;
+  };
     function cleanup() {
       root.classList.remove('intro-on', 'intro-open');
       delete root.dataset.introAt;

@@ -61,18 +61,18 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
          never a deep link, back/forward, reduced motion or a ClientRouter navigation. -->
     <script is:inline>
       (function () {
-        var root = document.documentElement;
+        const root = document.documentElement;
         root.classList.add('js');
         try {
           if (location.pathname !== '/' || location.hash) return;
           if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-          var nav = performance.getEntriesByType('navigation')[0];
+          const nav = performance.getEntriesByType('navigation')[0];
           if (nav && nav.type === 'back_forward') return;
           if (sessionStorage.getItem('monolith:intro')) return;
           sessionStorage.setItem('monolith:intro', '1');
           root.classList.add('intro-on');
           root.dataset.introAt = String(Math.round(performance.now()));
-        } catch (e) {
+        } catch {
           // No storage: no intro.
         }
       })();
