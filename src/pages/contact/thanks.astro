@@ -1,0 +1,23 @@
+---
+/** Where the plain (no-JS) form lands after a successful send. */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ContactSuccess from '../../components/ContactSuccess.astro';
+---
+
+<BaseLayout
+  title="Brief received"
+  description="Your project brief reached Monolith Web Studio. Here’s what happens next."
+>
+  <section class="thanks">
+    <div class="container">
+      <ContactSuccess headingLevel={1} />
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .thanks {
+    position: relative;
+    padding-block: calc(var(--nav-height) + var(--space-3xl)) var(--space-3xl);
+  }
+</style>
