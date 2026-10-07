@@ -1,5 +1,6 @@
 /**
- * Site-wide data. Bracketed values are placeholders from docs/BRIEF.md and must
+ * Site-wide data (projects and experiments are content collections:
+ * src/content.config.ts). Bracketed values are placeholders from docs/BRIEF.md and must
  * stay bracketed until real content is supplied. Never invent replacements.
  */
 
@@ -47,52 +48,13 @@ export const CHAPTERS: Chapter[] = [
   { index: '04', id: 'the-core', label: 'The Core' },
 ];
 
-export interface Project {
-  slug: string;
-  title: string;
-  client: string;
-  clientType: string;
-  summary: string;
-  liveUrl?: string;
-  concept?: boolean;
-}
-
-/** Real projects from BRIEF.md. Case study detail arrives with content collections in Phase 3. */
-export const PROJECTS: Project[] = [
-  {
-    slug: 'seqdvgc',
-    title: 'SEQDVGC',
-    client: 'South East Queensland Defence Veterans Golf Club',
-    clientType: 'Sporting club',
-    summary:
-      'A home for the club, connecting veterans and their families across Brisbane, the Sunshine Coast and the Gold Coast.',
-    liveUrl: 'https://www.seqdvgc.com.au/',
-  },
-  {
-    slug: 'allen-gillon',
-    title: 'Allen Gillon',
-    client: 'Allen Gillon, guitarist, Bribie Island',
-    clientType: 'Musician',
-    summary:
-      'A quiet, accessible site for a local musician, including a “listen to this page” audio feature and skip-link accessibility.',
-    liveUrl: 'https://allengillon.com/',
-  },
-  {
-    slug: 'concept',
-    title: '[CONCEPT PROJECT]',
-    client: '[SUBJECT TO BE CHOSEN]',
-    clientType: 'Unofficial concept',
-    summary:
-      'An unofficial redesign concept. Not a client project, and not commissioned by the subject.',
-    concept: true,
-  },
-];
-
 export interface Service {
   name: string;
   package: string;
   description: string;
   price: string;
+  /** What the package includes: to be supplied by the owner. */
+  included: string[];
 }
 
 export const SERVICES: Service[] = [
@@ -101,18 +63,21 @@ export const SERVICES: Service[] = [
     package: 'Launch site',
     description: 'Fast, sharp, accessible site for a new or small business. Ready in weeks.',
     price: 'from [$ PRICE]',
+    included: ['[WHAT’S INCLUDED TO BE SUPPLIED]'],
   },
   {
     name: 'Flow',
     package: 'Custom build',
     description: 'Bespoke design, motion and an easy-to-use CMS.',
     price: 'from [$ PRICE]',
+    included: ['[WHAT’S INCLUDED TO BE SUPPLIED]'],
   },
   {
     name: 'Eruption',
     package: 'Flagship experience',
     description: '3D, scroll storytelling and award-grade craft.',
     price: 'from [$ PRICE]',
+    included: ['[WHAT’S INCLUDED TO BE SUPPLIED]'],
   },
 ];
 
@@ -123,18 +88,12 @@ export const PROCESS = [
   { name: 'Ship', text: 'Launch, training, and support after.' },
 ] as const;
 
-export interface LabEntry {
-  slug: string;
-  title: string;
-  summary: string;
-}
-
-/** Lab experiments. The first is the fissure shader running behind the home page. */
-export const LAB: LabEntry[] = [
-  {
-    slug: 'light-through-stone',
-    title: 'Light through stone',
-    summary:
-      'The fissure shader behind this site: cellular noise masked into a few branching veins, so magma reads as light leaking through rock rather than an even crackle.',
-  },
-];
+/** Services FAQ: sensible questions, answers to be supplied (no invented policies). */
+export const FAQ = [
+  { q: 'How long does a website take?', a: '[ANSWER TO BE SUPPLIED]' },
+  { q: 'Do I need to have my words and photos ready?', a: '[ANSWER TO BE SUPPLIED]' },
+  { q: 'Can I update the site myself?', a: '[ANSWER TO BE SUPPLIED]' },
+  { q: 'Do you look after hosting and domains?', a: '[ANSWER TO BE SUPPLIED]' },
+  { q: 'What happens after launch?', a: '[ANSWER TO BE SUPPLIED]' },
+  { q: 'How do payments work?', a: '[ANSWER TO BE SUPPLIED]' },
+] as const;

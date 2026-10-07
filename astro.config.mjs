@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import vercel from '@astrojs/vercel';
+import { placeholderReport } from './src/integrations/placeholder-report';
 
 /**
  * Writes the scene chunk's built URL into scene-boot.ts (in place of the
@@ -36,6 +37,7 @@ export default defineConfig({
   site: 'https://monolith.example',
   output: 'static',
   adapter: vercel(),
+  integrations: [placeholderReport()],
   trailingSlash: 'ignore',
   prefetch: false,
   devToolbar: { enabled: false },

@@ -3,13 +3,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Hud from '../components/Hud.astro';
 import FaceCard from '../components/FaceCard.astro';
 import ServiceCard from '../components/ServiceCard.astro';
-import { PROJECTS, SERVICES, LAB, SITE, CTA } from '../lib/site';
+import { SERVICES, SITE, CTA } from '../lib/site';
+import { getWork, toProject } from '../lib/work';
+import { getCollection } from 'astro:content';
 
-const [seqdvgc, allen, concept] = PROJECTS as [
-  (typeof PROJECTS)[number],
-  (typeof PROJECTS)[number],
-  (typeof PROJECTS)[number],
-];
+// The story has a face for each of the first two projects; the concept sits in the Lab chapter.
+const work = (await getWork()).map(toProject);
+const seqdvgc = work.find((p) => p.slug === 'seqdvgc')!;
+const allen = work.find((p) => p.slug === 'allen-gillon')!;
+const concept = work.find((p) => p.isConcept)!;
+const lab = (await getCollection('lab')).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
+);
 ---
 
 <BaseLayout>
@@ -101,11 +106,11 @@ const [seqdvgc, allen, concept] = PROJECTS as [
             and interaction experiments.
           </p>
           <ul class="lab-list" data-reveal>
-            {LAB.map((entry) => (
+            {lab.map((entry) => (
               <li>
-                <a class="lab-list__link" href={`/lab/${entry.slug}`}>
-                  <span class="lab-list__title">{entry.title}</span>
-                  <span class="lab-list__summary">{entry.summary}</span>
+                <a class="lab-list__link" href={`/lab/${entry.id}`}>
+                  <span class="lab-list__title">{entry.data.title}</span>
+                  <span class="lab-list__summary">{entry.data.summary}</span>
                 </a>
               </li>
             ))}
