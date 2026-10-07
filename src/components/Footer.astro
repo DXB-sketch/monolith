@@ -1,20 +1,28 @@
 ---
 import { SITE, NAV, CTA } from '../lib/site';
 
+interface Props {
+  /** Show the "Start a project" lead (off when the page already ends on one). */
+  cta?: boolean;
+}
+
+const { cta = true } = Astro.props;
 const year = new Date().getFullYear();
 ---
 
-<footer class="footer">
+<footer class:list={['footer', { 'footer--plain': !cta }]}>
   <div class="container footer__inner">
-    <div class="footer__lead">
-      <p class="footer__cta-line heading">Have a project in mind? I’d like to hear about it.</p>
-      <a class="btn btn--primary" href={CTA.href}>
-        {CTA.label}
-        <span class="btn__arrow" aria-hidden="true">
-          →
-        </span>
-      </a>
-    </div>
+    {cta && (
+      <div class="footer__lead">
+        <p class="footer__cta-line heading">Have a project in mind? I’d like to hear about it.</p>
+        <a class="btn btn--primary" href={CTA.href}>
+          {CTA.label}
+          <span class="btn__arrow" aria-hidden="true">
+            →
+          </span>
+        </a>
+      </div>
+    )}
 
     <div class="footer__grid">
       <div class="footer__col">
@@ -72,6 +80,16 @@ const year = new Date().getFullYear();
     padding-block: var(--space-3xl) var(--space-xl);
     border-top: var(--hairline);
     background: var(--basalt);
+  }
+
+  /* No lead: the footer's own top rule is enough, so the grid needs no second one. */
+  .footer--plain {
+    padding-top: var(--space-xl);
+  }
+
+  .footer--plain .footer__grid {
+    padding-top: 0;
+    border-top: 0;
   }
 
   .footer__inner {

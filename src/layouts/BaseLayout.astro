@@ -13,9 +13,11 @@ interface Props {
   description?: string;
   /** Extra class on <main>, for page-level layout. */
   mainClass?: string;
+  /** The footer's "Start a project" lead; off where the page ends on its own CTA or is the form. */
+  footerCta?: boolean;
 }
 
-const { title, description = SITE.description, mainClass } = Astro.props;
+const { title, description = SITE.description, mainClass, footerCta = true } = Astro.props;
 const fullTitle = title ? `${title} · ${SITE.name}` : `${SITE.name} · Wamuran, Queensland`;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 ---
@@ -94,7 +96,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
       <slot />
     </main>
 
-    <Footer />
+    <Footer cta={footerCta} />
 
     <script>
       import { initSceneBoot } from '../lib/scene-boot';
