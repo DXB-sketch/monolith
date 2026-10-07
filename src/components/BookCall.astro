@@ -1,0 +1,104 @@
+---
+/**
+ * Book a call. The Cal.com embed (a third-party script and iframe) loads only
+ * when the visitor clicks "Book a call"; until then nothing is fetched. The
+ * plain link always works: without JS, or if the embed fails to load.
+ */
+import { SITE } from '../lib/site';
+
+interface Props {
+  headingLevel?: 2 | 3;
+}
+
+const { headingLevel = 2 } = Astro.props;
+const Heading = `h${headingLevel}` as 'h2' | 'h3';
+const url = SITE.bookingUrl;
+const configured = /^https:\/\//.test(url);
+const titleId = `book-title-${Math.random().toString(36).slice(2, 8)}`;
+---
+
+<section class="book" data-book data-book-url={configured ? url : ''} aria-labelledby={titleId}>
+  <Heading id={titleId} class="subheading">
+    Prefer to talk?
+  </Heading>
+  <p class="book__text">
+    Book a short call and we’ll talk it through: what you need, what it might cost, and whether I’m
+    the right fit.
+  </p>
+  <div class="book__actions">
+    <button class="btn btn--ghost" type="button" data-book-open hidden>
+      Book a call
+      <span class="btn__arrow" aria-hidden="true">
+        →
+      </span>
+    </button>
+    {configured ? (
+      <a class="book__link" href={url} rel="noopener" data-book-link>
+        Open the booking page<span class="visually-hidden"> on Cal.com</span>
+      </a>
+    ) : (
+      <span class="book__link" data-book-link>
+        Booking link: {url}
+      </span>
+    )}
+  </div>
+  <p class="book__status" role="status" data-book-status></p>
+  <div class="book__embed" data-book-embed hidden></div>
+</section>
+
+<script>
+  import { initBooking } from '../lib/booking';
+  document.addEventListener('astro:page-load', initBooking);
+</script>
+
+<style>
+  .book {
+    display: grid;
+    gap: var(--space-s);
+    justify-items: start;
+    padding: var(--space-l);
+    border: var(--hairline);
+    border-top: var(--rule-accent);
+    border-radius: var(--radius-panel);
+    background: var(--panel-bg);
+  }
+
+  .book__text {
+    max-width: 48ch;
+    color: var(--ash-soft);
+  }
+
+  .book__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-s) var(--space-l);
+    align-items: center;
+  }
+
+  .book__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: var(--step--1);
+  }
+
+  .book__status:empty {
+    display: none;
+  }
+
+  .book__status {
+    font-size: var(--step--1);
+    color: var(--ash-soft);
+  }
+
+  .book__embed {
+    width: 100%;
+    min-height: 34rem;
+    overflow: auto;
+    border-radius: var(--radius-panel);
+  }
+
+  .book__embed[hidden] {
+    display: none;
+  }
+</style>
