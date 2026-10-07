@@ -1,0 +1,209 @@
+---
+/**
+ * The first-visit intro: the wordmark, a lava fissure drawn through it, then
+ * the screen splits open along the fissure onto the scene (or the poster).
+ *
+ * HTML and CSS only, over the page: the content and hero headline render
+ * underneath unchanged. Shown once per browser session, on a direct visit to
+ * the home page only (never a deep link, back/forward, a ClientRouter
+ * navigation, reduced motion, or without JS). At least 400 ms so it never
+ * flashes, at most 800 ms; it opens as soon as the scene's first layer is on
+ * screen, and at once on any click, key, wheel or touch. Never a loading screen.
+ */
+---
+
+<div class="intro" aria-hidden="true" inert data-intro>
+  <div class="intro__half intro__half--left">
+    <span class="intro__mark">Monolith</span>
+  </div>
+  <div class="intro__half intro__half--right">
+    <span class="intro__mark">Monolith</span>
+  </div>
+  <span class="intro__fissure"></span>
+</div>
+
+<script is:inline>
+  // The timing lives in CSS: the split runs by itself at 800 ms on the
+  // compositor, even if the main thread is busy starting the scene. This only
+  // opens it earlier (scene ready, after at least 400 ms; or any input) and
+  // tidies up afterwards.
+  (function () {
+    var root = document.documentElement;
+    if (!root.classList.contains('intro-on')) return;
+    var MIN = 400;
+    var MAX = 800;
+    var SPLIT = 700;
+    var start = Number(root.dataset.introAt) || performance.now();
+    var opened = false;
+    var inputs = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    var elapsed = function () {
+      return performance.now() - start;
+    };
+    function cleanup() {
+      root.classList.remove('intro-on', 'intro-open');
+      delete root.dataset.introAt;
+    }
+    function open() {
+      if (opened) return;
+      opened = true;
+      inputs.forEach(function (type) {
+        window.removeEventListener(type, open, true);
+      });
+      // Too close to (or past) the automatic split: let that one run.
+      if (elapsed() < MAX - 60) {
+        root.classList.add('intro-open');
+        setTimeout(cleanup, SPLIT);
+      } else {
+        setTimeout(cleanup, Math.max(0, MAX + SPLIT - elapsed()));
+      }
+    }
+    function ready() {
+      setTimeout(open, Math.max(0, MIN - elapsed()));
+    }
+    inputs.forEach(function (type) {
+      window.addEventListener(type, open, { capture: true, passive: true });
+    });
+    document.addEventListener('monolith:scene-ready', ready, { once: true });
+    document.addEventListener('monolith:poster', ready, { once: true });
+    setTimeout(open, Math.max(0, MAX - elapsed()));
+  })();
+</script>
+
+<style>
+  .intro {
+    display: none;
+  }
+
+  :global(html.intro-on) .intro {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-intro);
+    pointer-events: none;
+  }
+
+  .intro__half {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    overflow: hidden;
+    background: var(--basalt);
+    /* Opens by itself at 800 ms (the maximum), whatever the main thread is doing. */
+    animation: 650ms var(--ease-out-expo) 800ms 1 forwards;
+  }
+
+  .intro__half--left {
+    left: 0;
+    animation-name: intro-split-left;
+  }
+
+  .intro__half--right {
+    right: 0;
+    animation-name: intro-split-right;
+  }
+
+  /* Opened early (scene ready, or input): the same split, from now. */
+  :global(html.intro-open) .intro__half--left {
+    animation: intro-split-left-now 650ms var(--ease-out-expo) forwards;
+  }
+
+  :global(html.intro-open) .intro__half--right {
+    animation: intro-split-right-now 650ms var(--ease-out-expo) forwards;
+  }
+
+  @keyframes intro-split-left {
+    to {
+      transform: translateX(-100%);
+    }
+  }
+
+  @keyframes intro-split-left-now {
+    to {
+      transform: translateX(-100%);
+    }
+  }
+
+  @keyframes intro-split-right {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes intro-split-right-now {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* One wordmark across the full width, cut by each half: it splits with the screen. */
+  .intro__mark {
+    position: absolute;
+    top: 50%;
+    width: 100vw;
+    padding-left: 0.42em; /* balance the trailing letter-spacing */
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: clamp(1.25rem, 1rem + 1.6vw, 2.25rem);
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--bone);
+    transform: translateY(-50%);
+  }
+
+  .intro__half--left .intro__mark {
+    left: 0;
+  }
+
+  .intro__half--right .intro__mark {
+    right: 0;
+  }
+
+  /* The fissure: drawn top to bottom through the wordmark, glowing; it fades as the screen splits. */
+  .intro__fissure {
+    position: absolute;
+    left: 50%;
+    top: 22%;
+    width: 2px;
+    height: 56%;
+    margin-left: -1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      var(--lava) 18%,
+      var(--lava-hot) 50%,
+      var(--lava) 82%,
+      transparent
+    );
+    box-shadow: 0 0 14px 2px rgb(var(--lava-rgb) / 0.55);
+    transform: scaleY(0);
+    transform-origin: 50% 0;
+    animation:
+      intro-fissure 300ms var(--ease-out) 40ms forwards,
+      intro-fade 240ms var(--ease-out) 800ms forwards;
+  }
+
+  :global(html.intro-open) .intro__fissure {
+    transform: scaleY(1);
+    animation: intro-fade 240ms var(--ease-out) forwards;
+  }
+
+  @keyframes intro-fissure {
+    to {
+      transform: scaleY(1);
+    }
+  }
+
+  @keyframes intro-fade {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(html.intro-on) .intro {
+      display: none;
+    }
+  }
+</style>

@@ -124,7 +124,7 @@ void main() {
   // No bloom pass on Lite: soft glow around the veins stands in for it, a
   // tight hot one and a broad warm one (as bloom's small and large mips).
   float tight = exp(-dMain / 0.06) * veins + exp(-dCore / (0.08 + uCoreOpen * 0.6)) * coreSpan * front;
-  float broad = exp(-dMain / 0.35) * veins + exp(-dCore / (0.45 + uCoreOpen * 2.0)) * coreSpan * front;
+  float broad = exp(-dMain / 0.35) * veins + exp(-dCore / (0.3 + uCoreOpen * 2.0)) * coreSpan * front * 0.5;
   emission += (mix(uLava, uLavaHot, 0.35) * tight * 1.1 + mix(uEmber, uLava, 0.55) * broad * 0.55) * intensity;
   // Without bloom's added light the cores read dimmer: lift them to match.
   emission += coreCol * 0.3 * intensity;

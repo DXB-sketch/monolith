@@ -49,7 +49,7 @@ void main() {
     // Drawn without a depth test (the stone's own edges would clip it), so it
     // fades out as the front face turns away from the camera.
     float facing = smoothstep(0.05, 0.45, dot(normalize(cameraPosition - position), uFront));
-    vStrength = (0.12 + 0.1 * uFissureGain + uCoreOpen * 0.9) * pulse * uFade * facing;
+    vStrength = (0.05 + 0.05 * uFissureGain + uCoreOpen * 0.9) * pulse * uFade * facing;
   } else {
     vStrength = 0.16 * uLavaIntensity * uLavaGlow * pulse;
   }

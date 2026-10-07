@@ -147,8 +147,10 @@ export interface SceneHandle {
 const PROGRESS_DAMPING = 7;
 /** Each layer fades in over this long. */
 const FADE_MS = 450;
-/** Frames ignored by the controller after anything changes (a layer, a tier, the scale). */
+/** Frames ignored by the controller after a layer or tier appears (compiles, uploads, fades). */
 const SETTLE_FRAMES = 30;
+/** After a resolution or extras change only the next few frames are unrepresentative. */
+const SETTLE_FRAMES_SMALL = 8;
 /** The controller decides at most this often. */
 const DECISION_MS = 500;
 const SCALE_MIN = 0.5;
@@ -747,8 +749,8 @@ export async function createScene(
   let gaveUp = false;
 
   /** Ignore the next frames (a layer, tier or scale just changed). */
-  const unsettle = () => {
-    settleUntilFrame = frameIndex + SETTLE_FRAMES;
+  const unsettle = (frames = SETTLE_FRAMES) => {
+    settleUntilFrame = frameIndex + frames;
     samples = [];
     rawMax = 0;
     headroomSince = 0;
@@ -761,7 +763,7 @@ export async function createScene(
     decide(`resolution ${scale.toFixed(2)} → ${value.toFixed(2)} (${why})`);
     scale = value;
     resize();
-    unsettle();
+    unsettle(SETTLE_FRAMES_SMALL);
     settle();
   };
 
@@ -777,7 +779,7 @@ export async function createScene(
       );
     }
     decide(`extras ${on ? 'on' : 'off'} (${why})`);
-    unsettle();
+    unsettle(SETTLE_FRAMES_SMALL);
   };
 
   /** Rebuild in place at another tier, every layer at once; the old one keeps drawing meanwhile. */
