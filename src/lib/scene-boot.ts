@@ -16,7 +16,15 @@
  * every path ends in the live scene or the poster with a recorded reason
  * (see the ?fps overlay, or ?debug in the console).
  */
-import { error, fallback, getDiagnostics, info, mark, withTimeout } from './diagnostics';
+import {
+  error,
+  fallback,
+  getDiagnostics,
+  info,
+  mark,
+  setSceneStats,
+  withTimeout,
+} from './diagnostics';
 import {
   detectTier,
   detectTierFast,
@@ -52,6 +60,8 @@ const DEBUG = params.has('debug');
 const DELAY_SCENE_MS = DEBUG ? Number(params.get('delayscene') ?? 0) : 0;
 /** Test hook (?debug&keeptier): skip the frame-time downgrade without forcing a tier. */
 const KEEP_TIER = DEBUG && params.has('keeptier');
+/** ?fps: time each scene layer on the GPU for the overlay. */
+const GPU_TIMING = params.has('fps');
 
 let tier: QualityTier = 'off';
 /** True until the GPU has been checked (after first paint, on scene pages only). */
@@ -341,6 +351,7 @@ async function ensureScene() {
       onContextLost,
       onContextRestored,
       onWash: setWash,
+      gpuTiming: GPU_TIMING,
     });
     let created: SceneHandle;
     try {
@@ -485,6 +496,11 @@ export function initSceneBoot() {
 
   bindPointer();
   onPage();
+  setSceneStats(() =>
+    handle
+      ? { gpu: handle.gpuTimings()?.ms ?? null, lines: [`setup ${handle.description}`] }
+      : null,
+  );
 
   // ?debug: inspect boot state and simulate tier changes from tests or the console.
   if (DEBUG) {

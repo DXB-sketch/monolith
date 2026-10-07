@@ -69,6 +69,24 @@ export function getDiagnostics() {
   return { entries, signals };
 }
 
+/** Live scene numbers for the ?fps overlay (GPU time per layer, resolution scale, decisions). */
+export interface SceneStats {
+  /** Smoothed GPU milliseconds per layer, plus `frame` and `post`; null without timer queries. */
+  gpu: Record<string, number> | null;
+  /** Free-form lines: setup, resolution scale, layers, controller state. */
+  lines: string[];
+}
+
+let statsProvider: (() => SceneStats | null) | null = null;
+
+export function setSceneStats(provider: (() => SceneStats | null) | null) {
+  statsProvider = provider;
+}
+
+export function getSceneStats(): SceneStats | null {
+  return statsProvider?.() ?? null;
+}
+
 /** Reject after `ms` with a recorded timeout, so no boot step can wait forever. */
 export function withTimeout<T>(promise: Promise<T>, ms: number, step: string): Promise<T> {
   let timer = 0;

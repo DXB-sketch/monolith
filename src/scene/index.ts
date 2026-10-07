@@ -43,6 +43,7 @@ import { cameraAt, createPose, idleOffset } from './camera-path';
 import { blendChapterState, createChapterState } from './chapters';
 import { createChannel } from './channel';
 import { createEmbers, type EmbersModule } from './embers';
+import { createGpuTimer, type GpuTimer, type GpuTimings } from './gpu-timer';
 import { createLava } from './lava';
 import { createMonolith, LAVA_LIGHT_COUNT, MONOLITH, type MonolithModule } from './monolith';
 import { PALETTE_HEX } from './palette';
@@ -89,6 +90,8 @@ export interface SceneOptions {
   debugHide?: string[];
   /** Dev only: render without post-processing. */
   debugNoPost?: boolean;
+  /** Time each layer on the GPU (EXT_disjoint_timer_query_webgl2), for ?fps. */
+  gpuTiming?: boolean;
 }
 
 export interface SceneHandle {
@@ -111,6 +114,8 @@ export interface SceneHandle {
   readonly description: string;
   /** Where the camera actually is in the story (damped), for diagnostics and tests. */
   readonly cameraProgress: number;
+  /** Per-layer GPU milliseconds, or null without timer queries. */
+  gpuTimings(): GpuTimings | null;
 }
 
 /**
@@ -251,6 +256,7 @@ export async function createScene(
   const drift = new Vector3();
   let drawingHeight = 1;
   let world: World | null = null;
+  let timer: GpuTimer | null = null;
   let step: SetupStep = { tier: options.tier, post: !options.debugNoPost };
 
   // ── Building one attempt ───────────────────────────────────────────────
@@ -475,8 +481,10 @@ export async function createScene(
 
     updatePointer(w, dt);
     for (const m of w.modules) m.update(state);
+    timer?.beginFrame();
     if (w.composer) w.composer.render(dt);
     else renderer.render(w.scene, camera);
+    timer?.endFrame();
   };
 
   /**
@@ -575,6 +583,10 @@ export async function createScene(
       gl.isContextLost() ? 'WebGL context lost during setup' : 'every scene setup failed',
     );
   }
+  if (options.gpuTiming) {
+    timer = createGpuTimer(renderer);
+    if (timer) for (const m of world.modules) timer.track(m.object, m.object.name);
+  }
   if (step !== ladder[0]) issue(`running reduced setup: ${label(step)}`);
   phase('shaders compiled', label(step));
   resizeObserver.observe(canvas);
@@ -665,6 +677,7 @@ export async function createScene(
     get cameraProgress() {
       return cameraProgress;
     },
+    gpuTimings: () => timer?.read() ?? null,
     setProgress(p, immediate = false) {
       if (capture) return;
       targetProgress = MathUtils.clamp(p, 0, 1);
@@ -689,6 +702,7 @@ export async function createScene(
       resizeObserver.disconnect();
       canvas.removeEventListener('webglcontextlost', onContextLost);
       canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      timer?.dispose();
       world?.dispose();
       world = null;
       renderer.dispose();

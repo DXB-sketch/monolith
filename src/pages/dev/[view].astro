@@ -37,6 +37,8 @@ export function getStaticPaths() {
 
       createScene(canvas, {
         tier,
+        gpuTiming: true,
+        fixedTier: true,
         debugHide: params.get('hide')?.split(','),
         debugNoPost: params.has('nopost'),
         capture: captureAt
@@ -48,6 +50,7 @@ export function getStaticPaths() {
         },
       })
         .then((scene) => {
+          (window as unknown as { __gpu?: unknown }).__gpu = () => scene.gpuTimings();
           if (pointer && pointer.length === 2) scene.setPointer(pointer[0]!, pointer[1]!);
           scene.resume();
         })
