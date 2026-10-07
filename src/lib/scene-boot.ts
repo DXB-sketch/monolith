@@ -644,6 +644,10 @@ export function initSceneBoot() {
     if (navigationType !== 'traverse' && !prefersReducedMotion()) handle?.shimmer();
   });
   document.addEventListener('visibilitychange', sync);
+  // The contact form's success: the core vein flares (High, Medium and Lite).
+  document.addEventListener('monolith:flare', () => {
+    if (!prefersReducedMotion()) handle?.flare();
+  });
 
   matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
     if (!prefersReducedMotion()) return;

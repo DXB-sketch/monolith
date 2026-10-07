@@ -83,6 +83,12 @@ const FORM_ERRORS = {
     </div>
 
     <p class="brief__progress label" aria-live="polite" data-brief-progress hidden></p>
+    {/* Decorative: each completed step leaves a thin lava line (the text above says it in words). */}
+    <ol class="brief__track" aria-hidden="true" data-brief-track hidden>
+      {STEPS.map(() => (
+        <li />
+      ))}
+    </ol>
 
     {STEPS.map((step, index) => (
       <fieldset class="brief__step" data-brief-step={step.id} id={`step-${step.id}`}>
@@ -286,8 +292,32 @@ const FORM_ERRORS = {
     outline-offset: 4px;
   }
 
-  .brief__progress[hidden] {
+  .brief__progress[hidden],
+  .brief__track[hidden] {
     display: none;
+  }
+
+  .brief__track {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-2xs);
+    margin: calc(var(--space-s) * -1) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .brief__track li {
+    height: 1px;
+    background: var(--obsidian-edge);
+    transition: background-color var(--dur-slow) var(--ease-out);
+  }
+
+  .brief__track li:global(.is-current) {
+    background: rgb(var(--bone-rgb) / 0.5);
+  }
+
+  .brief__track li:global(.is-done) {
+    background: var(--lava);
   }
 
   .brief__step {

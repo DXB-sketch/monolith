@@ -75,6 +75,9 @@ export function initBrief() {
   const next = form.querySelector<HTMLButtonElement>('[data-brief-next]')!;
   const submit = form.querySelector<HTMLButtonElement>('[data-brief-submit]')!;
   const success = document.querySelector<HTMLElement>('[data-brief-success]');
+  const track = form.querySelector<HTMLElement>('[data-brief-track]');
+  /** Steps that have passed their checks: each leaves a lava line in the track. */
+  const completed = new Set<number>();
   const hadServerErrors = !summary.hidden;
   let current = 0;
 
@@ -153,6 +156,13 @@ export function initBrief() {
     steps.forEach((step, i) => (step.hidden = i !== current));
     progress.hidden = false;
     progress.textContent = `Step ${current + 1} of ${steps.length}`;
+    if (track) {
+      track.hidden = false;
+      Array.from(track.children).forEach((segment, i) => {
+        segment.classList.toggle('is-done', completed.has(i));
+        segment.classList.toggle('is-current', i === current && !completed.has(i));
+      });
+    }
     back.hidden = current === 0;
     next.hidden = current === steps.length - 1;
     submit.hidden = current !== steps.length - 1;
@@ -177,6 +187,7 @@ export function initBrief() {
     checking = true;
     const errors = await validateStep(current).finally(() => (checking = false));
     if (errors) return showErrors(errors);
+    completed.add(current);
     clearErrors();
     showStep(current + 1);
   });
@@ -225,6 +236,8 @@ export function initBrief() {
       if (response.ok && reply.ok) {
         clearDraft();
         form.hidden = true;
+        // The stone answers: its core vein flares briefly (live tiers; lib/scene-boot.ts).
+        document.dispatchEvent(new CustomEvent('monolith:flare'));
         if (success) {
           success.hidden = false;
           success.querySelector<HTMLElement>('[data-brief-success-heading]')?.focus();
