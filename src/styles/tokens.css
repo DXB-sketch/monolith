@@ -23,6 +23,7 @@
   --obsidian-rgb: 20 16 16;
   --obsidian-edge-rgb: 42 30 27;
   --lava-rgb: 255 90 31;
+  --lava-hot-rgb: 255 176 112;
   --bone-rgb: 239 232 224;
 
   /* ── Semantic aliases ───────────────────────────────────────────────── */
@@ -122,5 +123,6 @@
   --z-nav: 30;
   --z-menu: 40;
   --z-skip: 50;
+  --z-cursor: 55;
   --z-intro: 60;
 }

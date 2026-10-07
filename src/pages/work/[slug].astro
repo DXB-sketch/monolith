@@ -8,6 +8,7 @@
  */
 import { Picture } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ReadProgress from '../../components/ReadProgress.astro';
 import NextStep from '../../components/NextStep.astro';
 import Recording from '../../components/Recording.astro';
 import { CONCEPT_NOTE, getWork, hostOf, type WorkEntry } from '../../lib/work';
@@ -54,6 +55,7 @@ const SCORES = [
   title={data.seo?.title ?? data.title}
   description={data.seo?.description ?? data.summary}
 >
+  <ReadProgress />
   <header class="case-hero" data-case-slug={entry.id}>
     <div class="container case-hero__inner">
       <p class="label case-hero__eyebrow">
@@ -126,7 +128,7 @@ const SCORES = [
       </h2>
       <div class="decisions">
         {decisionsByArea.map((group) => (
-          <div class="decisions__group" data-reveal>
+          <div class="decisions__group" data-sheen data-reveal>
             <h3 class="subheading">{AREAS[group.area]}</h3>
             <ul>
               {group.items.map((item) => (

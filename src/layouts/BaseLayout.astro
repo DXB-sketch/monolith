@@ -5,6 +5,7 @@ import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
 import SceneStage from '../components/SceneStage.astro';
 import Intro from '../components/Intro.astro';
+import Cursor from '../components/Cursor.astro';
 import { SITE } from '../lib/site';
 import { PALETTE_HEX } from '../scene/palette';
 import type { PageView } from '../scene/views';
@@ -102,6 +103,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 
     <Footer cta={footerCta} />
 
+    <Cursor />
+
     <script>
       import { initSceneBoot } from '../lib/scene-boot';
       import { initMorphs } from '../lib/morph';
@@ -109,6 +112,15 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
       initSceneBoot();
       initMorphs();
       initPageFocus();
+
+      // The custom cursor: desktops with a fine pointer and motion allowed only.
+      // Touch screens and reduced motion never download it.
+      if (
+        matchMedia('(hover: hover) and (pointer: fine)').matches &&
+        !matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        import('../lib/cursor').then((m) => m.mountCursor());
+      }
 
       // Dev overlay for real-device testing. Only fetched when ?fps is in the URL.
       if (new URLSearchParams(location.search).has('fps')) {

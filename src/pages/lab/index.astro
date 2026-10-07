@@ -35,7 +35,7 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
       <ul class="lab-grid">
         {entries.map((entry) => (
           <li data-reveal>
-            <article class="lab-card">
+            <article class="lab-card" data-sheen data-cursor="view">
               <p class="label">
                 <time datetime={entry.data.date.toISOString().slice(0, 10)}>
                   {dateFormat.format(entry.data.date)}

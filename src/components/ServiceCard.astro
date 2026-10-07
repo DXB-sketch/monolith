@@ -14,7 +14,7 @@ const { service, index, detailed = false, level = 3 } = Astro.props;
 const Heading = `h${level}` as 'h2' | 'h3';
 ---
 
-<article class="service-card">
+<article class="service-card" data-sheen>
   <p class="label">
     <span class="service-card__num">0{index + 1}</span> {service.package}
   </p>

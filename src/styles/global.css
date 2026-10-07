@@ -172,6 +172,8 @@ main h1[tabindex='-1']:focus-visible {
 .btn {
   --btn-pad-y: 0.85em;
   --btn-pad-x: 1.6em;
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -192,6 +194,43 @@ main h1[tabindex='-1']:focus-visible {
     border-color var(--dur-base) var(--ease-out),
     color var(--dur-base) var(--ease-out),
     transform var(--dur-base) var(--ease-out);
+  /* --mag-x/y: the slight magnetic lean (lib/cursor.ts), primary CTAs only. */
+  transform: translate(var(--mag-x, 0), var(--mag-y, 0));
+}
+
+/* A warm glow under the pointer (fine pointers, motion allowed: lib/cursor.ts
+   sets --mx/--my), and a slight press on click everywhere. */
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    6em circle at var(--mx, 50%) var(--my, 50%),
+    rgb(var(--lava-hot-rgb) / 0.42),
+    transparent 70%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.btn--ghost::before {
+  background: radial-gradient(
+    6em circle at var(--mx, 50%) var(--my, 50%),
+    rgb(var(--lava-rgb) / 0.22),
+    transparent 70%
+  );
+}
+
+html.cursor-on .btn:hover::before {
+  opacity: 1;
+}
+
+.btn:active {
+  transform: translate(var(--mag-x, 0), var(--mag-y, 0)) translateY(1px) scale(0.98);
+  transition-duration: 80ms;
 }
 
 .btn--primary {
@@ -224,6 +263,81 @@ main h1[tabindex='-1']:focus-visible {
 
 .btn--ghost .btn__arrow {
   color: var(--lava);
+}
+
+/* ── Hover language (Phase 4) ────────────────────────────────────────────── */
+
+/* Links in running text: a faint resting underline, and a lava line that draws
+   in from the left on hover or keyboard focus. */
+main :is(p, li, dd, figcaption) a:not([class]) {
+  text-decoration-color: rgb(var(--bone-rgb) / 0.35);
+  background: linear-gradient(var(--lava), var(--lava)) 0 100% / 0 1px no-repeat;
+  transition:
+    background-size var(--dur-base) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out);
+}
+
+main :is(p, li, dd, figcaption) a:not([class]):is(:hover, :focus-visible) {
+  background-size: 100% 1px;
+  text-decoration-color: transparent;
+}
+
+/* Panels and cards: the border warms toward lava on hover or keyboard focus
+   inside; on fine pointers a faint warm sheen follows the pointer. */
+[data-sheen] {
+  position: relative;
+  transition: border-color var(--dur-base) var(--ease-out);
+}
+
+/* (Sides only: the panels' lava top rule stays as it is.) */
+[data-sheen]:is(:hover, :focus-within) {
+  border-right-color: rgb(var(--lava-rgb) / 0.55);
+  border-bottom-color: rgb(var(--lava-rgb) / 0.55);
+  border-left-color: rgb(var(--lava-rgb) / 0.55);
+}
+
+[data-sheen]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    22rem circle at var(--mx, 50%) var(--my, 0%),
+    rgb(var(--lava-rgb) / 0.08),
+    transparent 70%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+html.cursor-on [data-sheen]:hover::after {
+  opacity: 1;
+}
+
+/* ── Scrollbar, styled where supported ─────────────────────────────────── */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--obsidian-edge) var(--basalt);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--basalt);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid var(--basalt);
+  border-radius: var(--radius-pill);
+  background: var(--obsidian-edge);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ash);
 }
 
 @media (prefers-reduced-motion: reduce) {
