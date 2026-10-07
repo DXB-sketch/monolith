@@ -159,6 +159,8 @@ export interface SceneHandle {
   shimmer(): void;
   /** True while a held still frame is on screen (Lite on content pages). */
   readonly holding: boolean;
+  /** True while the camera glides between framings. */
+  readonly gliding: boolean;
   /** Pointer position, normalised -1..1 (y up). */
   setPointer(x: number, y: number): void;
   pause(): void;
@@ -1218,6 +1220,9 @@ export async function createScene(
     },
     get holding() {
       return held;
+    },
+    get gliding() {
+      return glide !== null;
     },
     gpuTimings: () => timer?.read() ?? null,
     stats() {

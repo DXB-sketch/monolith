@@ -27,8 +27,15 @@
       transform: scaleX(0);
       transform-origin: 0 50%;
       pointer-events: none;
-      animation: read-progress linear both;
-      animation-timeline: scroll(root block);
+      /* Longhands, and the timeline through a custom property: the CSS minifier
+         otherwise folds the timeline into the animation shorthand, which
+         browsers reject as invalid. */
+      --read-timeline: scroll(root block);
+      animation-name: read-progress;
+      animation-duration: auto;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: var(--read-timeline);
     }
 
     /* It follows the reader's own scrolling, so it stays with reduced motion too. */

@@ -675,6 +675,7 @@ export function initSceneBoot() {
         page: location.pathname,
         view: pageView,
         holding: handle?.holding ?? null,
+        gliding: handle?.gliding ?? null,
         triggers: countTriggers?.() ?? 0,
         reveals: pageReveals?.pending ?? null,
       }),
