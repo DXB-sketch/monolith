@@ -19,6 +19,8 @@
 import { blendChapterState, CHAPTER_STATES, createChapterState } from '../scene/chapters';
 import { DEFAULT_STORY_MAP, storyPosition, type StoryMap } from '../scene/story-map';
 import { mountReveals, type RevealController } from './reveal';
+import { prefersReducedMotion } from '../scene/quality';
+import { onLeave, track } from './analytics';
 
 export { triggerCount } from './reveal';
 import {
@@ -126,15 +128,52 @@ export async function mountStory(
   let storyRange = 1;
   let shownTemp = 0;
   let activeIndex = 0;
+  /** The furthest chapter reached, and whether the dive began (analytics: story_progress). */
+  let furthest = 0;
+  let dived = false;
+  const reportProgress = onLeave(() =>
+    track('story_progress', {
+      chapter: dived ? 'the-dive' : CHAPTER_IDS[furthest]!,
+      index: dived ? CHAPTER_IDS.length : furthest,
+    }),
+  );
   const position = { chapter: 0, dive: 0 };
   const chapterState = createChapterState();
 
+  /**
+   * The HUD's core temperature ticks toward a new reading in 5 °C steps rather
+   * than jumping (a chapter link, lite and static modes). Reduced motion: at once.
+   */
+  let targetTemp = 0;
+  let tickTimer = 0;
+  const renderTemp = (value: number) => {
+    shownTemp = value;
+    if (tempEl) tempEl.textContent = `${temperature.format(value)}°C`;
+  };
+  const tick = () => {
+    tickTimer = 0;
+    if (shownTemp === targetTemp) return;
+    renderTemp(shownTemp + Math.sign(targetTemp - shownTemp) * 5);
+    if (shownTemp !== targetTemp) tickTimer = window.setTimeout(tick, 32);
+  };
   const setTemp = (value: number) => {
     const rounded = Math.round(value / 5) * 5;
-    if (!tempEl || rounded === shownTemp) return;
-    shownTemp = rounded;
-    tempEl.textContent = `${temperature.format(rounded)}°C`;
+    if (!tempEl || rounded === targetTemp) return;
+    targetTemp = rounded;
+    if (!shownTemp || prefersReducedMotion()) {
+      clearTimeout(tickTimer);
+      tickTimer = 0;
+      renderTemp(rounded);
+    } else if (!tickTimer) {
+      tick();
+    }
   };
+
+  /** Quiet cues for the optional ambient sound (lib/sound.ts); nothing else listens. */
+  const cue = (name: 'chapter' | 'dive', index?: number) =>
+    document.dispatchEvent(new CustomEvent(`monolith:${name}`, { detail: { index } }));
+  let diving = false;
+  let cuesReady = false;
 
   const currentProgress = () =>
     Math.min(1, Math.max(0, (window.scrollY - storyStart) / storyRange));
@@ -144,9 +183,15 @@ export async function mountStory(
     blendChapterState(storyPosition(p, map, position), chapterState);
     setTemp(chapterState.coreTemp);
     setWashed(position.dive);
+    const nowDiving = position.dive > 0.02;
+    if (nowDiving && !diving && cuesReady) cue('dive');
+    if (nowDiving) dived = true;
+    diving = nowDiving;
   };
 
   const setActive = (index: number) => {
+    if (index !== activeIndex && cuesReady) cue('chapter', index);
+    furthest = Math.max(furthest, index);
     activeIndex = index;
     links.forEach((link, i) => {
       const active = i === index;
@@ -327,6 +372,9 @@ export async function mountStory(
     };
   }
 
+  // Sound cues only for real movement, not the story finding its feet on mount.
+  const cueTimer = window.setTimeout(() => (cuesReady = true), 1000);
+
   return {
     get mode() {
       return mode;
@@ -335,7 +383,11 @@ export async function mountStory(
     requestRefresh,
     unmount() {
       disposed = true;
+      // Leaving home by a link (no page hide with the ClientRouter): send it now.
+      reportProgress();
       clearTimeout(refreshTimer);
+      clearTimeout(tickTimer);
+      clearTimeout(cueTimer);
       document.removeEventListener('click', onClick, true);
       hud?.removeAttribute('data-washed');
       // Only the story's own triggers: its context, and its reveals'.

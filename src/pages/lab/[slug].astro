@@ -1,13 +1,16 @@
 ---
+import { published } from '../../lib/work';
+import { breadcrumbs } from '../../lib/structured-data';
 import { getCollection, render, type CollectionEntry } from 'astro:content';
 import { Picture } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ReadProgress from '../../components/ReadProgress.astro';
 import NextStep from '../../components/NextStep.astro';
 import { isDemoKey } from '../../lab/demos';
 import still from '../../assets/lab/light-through-stone.png';
 
 export async function getStaticPaths() {
-  const entries = await getCollection('lab');
+  const entries = await getCollection('lab', published);
   return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
 }
 
@@ -25,10 +28,25 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
 });
 ---
 
-<BaseLayout footerCta={false} title={entry.data.title} description={entry.data.summary}>
+<BaseLayout
+  view="lab"
+  footerCta={false}
+  og={`lab-${entry.id}`}
+  jsonLd={breadcrumbs(
+    [
+      { name: 'Home', path: '/' },
+      { name: 'Lab', path: '/lab' },
+      { name: entry.data.title, path: `/lab/${entry.id}` },
+    ],
+    Astro.site!,
+  )}
+  title={`${entry.data.title}: a Lab experiment`}
+  description={entry.data.summary}
+>
+  <ReadProgress />
   <header class="lab-hero">
     <div class="container lab-hero__inner">
-      <p class="label">
+      <p class="label lab-hero__eyebrow">
         <a href="/lab">Lab</a>
         <span aria-hidden="true"> / </span>
         <time datetime={entry.data.date.toISOString().slice(0, 10)}>
@@ -97,14 +115,38 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
 <script>
   import { DEMOS, isDemoKey } from '../../lab/demos';
 
+  /**
+   * The site's tier once it has settled. On a direct visit the GPU check is
+   * still running at page load (no `data-tier` yet), and the demo must not
+   * start on a device the site itself keeps on the poster (a software
+   * renderer, a weak GPU). Gives up after 10 s, as unsettled.
+   */
+  function settledTier(): Promise<string | undefined> {
+    const root = document.documentElement;
+    if (root.dataset.tier) return Promise.resolve(root.dataset.tier);
+    return new Promise((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (!root.dataset.tier) return;
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(root.dataset.tier);
+      });
+      const timer = setTimeout(() => {
+        observer.disconnect();
+        resolve(undefined);
+      }, 10_000);
+      observer.observe(root, { attributes: true, attributeFilter: ['data-tier'] });
+    });
+  }
+
   /** Swap the still for the live demo where it can run, and wire its controls. */
   async function initDemo() {
     const stage = document.querySelector<HTMLElement>('[data-demo]');
     const key = stage?.dataset.demo;
     if (!stage || !isDemoKey(key)) return;
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const poster = document.documentElement.dataset.tier === 'poster';
-    if (reduced || poster) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const tier = await settledTier();
+    if (!tier || tier === 'poster' || !stage.isConnected) return;
 
     const { startDemo } = await DEMOS[key]();
     const canvas = stage.querySelector<HTMLCanvasElement>('canvas')!;
@@ -130,6 +172,15 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
 </script>
 
 <style>
+  /* A basalt backing, as the story's eyebrows have: rising embers can pass behind this small text. */
+  .lab-hero__eyebrow {
+    justify-self: start;
+    width: fit-content;
+    margin-left: -0.5em;
+    padding: 0.3em 0.5em;
+    background: rgb(var(--basalt-rgb) / 0.82);
+  }
+
   .lab-hero {
     position: relative;
     padding-block: calc(var(--nav-height) + var(--space-3xl)) var(--space-xl);

@@ -1,15 +1,18 @@
 ---
 /**
- * A case study, in the order of docs/BRIEF.md: hero, summary, the challenge,
+ * A case study, in the order of docs/BRIEF.md: hero (with the cover, which the
+ * work index's row and preview morph into), summary, the challenge,
  * key decisions, visuals, results (only if real), a quote (only if real), the
  * next project, then Start a project. A section without data is left out
  * entirely; nothing renders empty.
  */
 import { Picture } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import ReadProgress from '../../components/ReadProgress.astro';
 import NextStep from '../../components/NextStep.astro';
 import Recording from '../../components/Recording.astro';
 import { CONCEPT_NOTE, getWork, hostOf, type WorkEntry } from '../../lib/work';
+import { breadcrumbs, caseStudy } from '../../lib/structured-data';
 
 export async function getStaticPaths() {
   const work = await getWork();
@@ -35,6 +38,7 @@ const AREAS = {
 const decisionsByArea = (Object.keys(AREAS) as (keyof typeof AREAS)[])
   .map((area) => ({ area, items: data.decisions.filter((d) => d.area === area) }))
   .filter((group) => group.items.length);
+const gallery = data.gallery ?? [];
 const lighthouse = data.results?.lighthouse;
 const resultNotes = data.results?.notes ?? [];
 const hasResults = Boolean(lighthouse) || resultNotes.length > 0;
@@ -47,18 +51,34 @@ const SCORES = [
 ---
 
 <BaseLayout
+  view="case"
   footerCta={false}
-  title={data.seo?.title ?? data.title}
+  og={`case-${entry.id}`}
+  jsonLd={[
+    caseStudy(entry, `/og/case-${entry.id}.jpg`, Astro.site!),
+    breadcrumbs(
+      [
+        { name: 'Home', path: '/' },
+        { name: 'Work', path: '/work' },
+        { name: data.title, path: `/work/${entry.id}` },
+      ],
+      Astro.site!,
+    ),
+  ]}
+  title={data.seo?.title ?? `${data.title}: ${data.isConcept ? 'a concept' : 'case study'}`}
   description={data.seo?.description ?? data.summary}
 >
-  <header class="case-hero">
+  <ReadProgress />
+  <header class="case-hero" data-case-slug={entry.id}>
     <div class="container case-hero__inner">
       <p class="label case-hero__eyebrow">
         <a href="/work">Work</a>
         <span aria-hidden="true"> / </span>
         <span>{data.isConcept ? 'Concept' : 'Case study'}</span>
       </p>
-      <h1 class="display case-hero__title">{data.title}</h1>
+      <h1 class="display case-hero__title vt-morph" style={`--vt: work-title-${entry.id}`}>
+        {data.title}
+      </h1>
       <dl class="case-hero__facts">
         <div>
           <dt class="label">Client</dt>
@@ -89,6 +109,20 @@ const SCORES = [
         </a>
       )}
     </div>
+    <figure class="container case-hero__media">
+      <Picture
+        class="vt-morph"
+        style={`--vt: work-cover-${entry.id}`}
+        src={data.cover}
+        alt={data.coverAlt}
+        formats={['avif', 'webp']}
+        widths={[640, 1280, 1920]}
+        sizes="(min-width: 90rem) 84rem, 94vw"
+        loading="eager"
+        fetchpriority="high"
+        decoding="async"
+      />
+    </figure>
   </header>
 
   <section class="case-section" aria-labelledby="challenge-title">
@@ -107,7 +141,7 @@ const SCORES = [
       </h2>
       <div class="decisions">
         {decisionsByArea.map((group) => (
-          <div class="decisions__group" data-reveal>
+          <div class="decisions__group" data-sheen data-reveal>
             <h3 class="subheading">{AREAS[group.area]}</h3>
             <ul>
               {group.items.map((item) => (
@@ -120,53 +154,44 @@ const SCORES = [
     </div>
   </section>
 
-  <section class="case-visuals" aria-labelledby="visuals-title">
-    <div class="container">
-      <h2 id="visuals-title" class="label case-section__label">
-        Visuals
-      </h2>
-      <div class="case-visuals__grid">
-        <figure class="case-visuals__item case-visuals__item--wide" data-reveal>
-          <Picture
-            src={data.cover}
-            alt={data.coverAlt}
-            formats={['avif', 'webp']}
-            widths={[640, 1280, 1920]}
-            sizes="(min-width: 90rem) 84rem, 94vw"
-            loading="lazy"
-            decoding="async"
-          />
-        </figure>
-        {data.gallery?.map((item) =>
-          item.type === 'video' ? (
-            <div class="case-visuals__item case-visuals__item--wide" data-reveal>
-              <Recording src={item.src} poster={item.poster} description={item.description} />
-            </div>
-          ) : (
-            <figure
-              class:list={[
-                'case-visuals__item',
-                item.wide ? 'case-visuals__item--wide' : 'case-visuals__item--narrow',
-              ]}
-              data-reveal
-            >
-              <Picture
-                src={item.src}
-                alt={item.alt}
-                formats={['avif', 'webp']}
-                widths={item.wide ? [640, 1280, 1920] : [400, 800]}
-                sizes={
-                  item.wide ? '(min-width: 90rem) 84rem, 94vw' : '(min-width: 48rem) 40vw, 94vw'
-                }
-                loading="lazy"
-                decoding="async"
-              />
-            </figure>
-          ),
-        )}
+  {gallery.length > 0 && (
+    <section class="case-visuals" aria-labelledby="visuals-title">
+      <div class="container">
+        <h2 id="visuals-title" class="label case-section__label">
+          Visuals
+        </h2>
+        <div class="case-visuals__grid">
+          {gallery.map((item) =>
+            item.type === 'video' ? (
+              <div class="case-visuals__item case-visuals__item--wide" data-reveal>
+                <Recording src={item.src} poster={item.poster} description={item.description} />
+              </div>
+            ) : (
+              <figure
+                class:list={[
+                  'case-visuals__item',
+                  item.wide ? 'case-visuals__item--wide' : 'case-visuals__item--narrow',
+                ]}
+                data-reveal
+              >
+                <Picture
+                  src={item.src}
+                  alt={item.alt}
+                  formats={['avif', 'webp']}
+                  widths={item.wide ? [640, 1280, 1920] : [400, 800]}
+                  sizes={
+                    item.wide ? '(min-width: 90rem) 84rem, 94vw' : '(min-width: 48rem) 40vw, 94vw'
+                  }
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+            ),
+          )}
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
+  )}
 
   {hasResults && (
     <section class="case-section" aria-labelledby="results-title">
@@ -210,9 +235,14 @@ const SCORES = [
 
   <nav class="next-project" aria-label="Next project">
     <div class="container">
-      <a class="next-project__link" href={`/work/${next.id}`}>
+      <a
+        class="next-project__link"
+        href={`/work/${next.id}`}
+        data-morph-slug={next.id}
+        data-cursor="view"
+      >
         <span class="label">Next project</span>
-        <span class="next-project__title">
+        <span class="next-project__title" data-morph-title>
           {next.data.title}
           <span class="next-project__arrow" aria-hidden="true">
             →
@@ -239,6 +269,13 @@ const SCORES = [
     display: grid;
     gap: var(--space-m);
     justify-items: start;
+  }
+
+  /* A basalt backing, as the story's eyebrows have: a bright ember can pass behind this small text. */
+  .case-hero__eyebrow {
+    margin-left: -0.5em;
+    padding: 0.3em 0.5em;
+    background: rgb(var(--basalt-rgb) / 0.82);
   }
 
   .case-hero__eyebrow a {
@@ -284,6 +321,18 @@ const SCORES = [
 
   .case-hero__summary {
     max-width: 44ch;
+  }
+
+  .case-hero__media {
+    margin-block: var(--space-2xl) 0;
+  }
+
+  .case-hero__media :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: var(--hairline);
+    border-radius: var(--radius-panel);
   }
 
   .case-section {

@@ -4,20 +4,22 @@ import Hud from '../components/Hud.astro';
 import FaceCard from '../components/FaceCard.astro';
 import ServiceCard from '../components/ServiceCard.astro';
 import { SERVICES, SITE, CTA } from '../lib/site';
-import { getWork, toProject } from '../lib/work';
+import { getWork, toProject, published } from '../lib/work';
+import { studio } from '../lib/structured-data';
 import { getCollection } from 'astro:content';
 
 // The story has a face for each of the first two projects; the concept sits in the Lab chapter.
 const work = (await getWork()).map(toProject);
 const seqdvgc = work.find((p) => p.slug === 'seqdvgc')!;
 const allen = work.find((p) => p.slug === 'allen-gillon')!;
-const concept = work.find((p) => p.isConcept)!;
-const lab = (await getCollection('lab')).sort(
+// The concept may be a draft (its subject not yet chosen): then the Lab chapter shows no card.
+const concept = work.find((p) => p.isConcept);
+const lab = (await getCollection('lab', published)).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
 );
 ---
 
-<BaseLayout>
+<BaseLayout jsonLd={studio(Astro.site!)}>
   <Hud />
 
   <!--
@@ -44,7 +46,7 @@ const lab = (await getCollection('lab')).sort(
             craft that stays fast, accessible and easy to update. One person, start to finish.
           </p>
           <div class="hero__actions">
-            <a class="btn btn--primary" href={CTA.href}>
+            <a class="btn btn--primary" href={CTA.href} data-magnetic>
               {CTA.label}
               <span class="btn__arrow" aria-hidden="true">
                 →
@@ -123,7 +125,7 @@ const lab = (await getCollection('lab')).sort(
           </a>
         </div>
         <div class="chapter__block" data-reveal>
-          <FaceCard project={concept} />
+          {concept && <FaceCard project={concept} />}
         </div>
       </div>
     </section>
@@ -170,7 +172,7 @@ const lab = (await getCollection('lab')).sort(
           Let’s make something <em>that stands.</em>
         </h3>
         <div class="hero__actions" data-reveal>
-          <a class="btn btn--primary" href={CTA.href}>
+          <a class="btn btn--primary" href={CTA.href} data-magnetic>
             {CTA.label}
             <span class="btn__arrow" aria-hidden="true">
               →
@@ -230,7 +232,7 @@ const lab = (await getCollection('lab')).sort(
             advice, even if that’s “you don’t need me yet”.
           </p>
           <p>Email: {SITE.email}</p>
-          <a class="btn btn--primary" href={CTA.href}>
+          <a class="btn btn--primary" href={CTA.href} data-magnetic>
             {CTA.label}
             <span class="btn__arrow" aria-hidden="true">
               →
@@ -360,6 +362,12 @@ const lab = (await getCollection('lab')).sort(
   .chapter__panel {
     width: 100%;
     max-width: 40rem;
+  }
+  /* 320 px screens: room for the display heading's longest word. */
+  @media (max-width: 22rem) {
+    .chapter__panel {
+      padding-inline: var(--space-m);
+    }
   }
 
   /* Copy over the scene sits on an obsidian panel, so its contrast never depends on the frame. */

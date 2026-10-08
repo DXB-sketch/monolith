@@ -33,8 +33,21 @@ import {
   type Object3D,
 } from 'three';
 import { loadFissureAtlas, type FissureAtlas } from './atlas';
-import { cameraAt, createPose, idleOffset } from './camera-path';
-import { blendChapterState, createChapterState } from './chapters';
+import {
+  cameraAt,
+  copyFrame,
+  createFrame,
+  createPose,
+  glideDuration,
+  glideFrame,
+  idleOffset,
+  orbitAt,
+  poseFromFrame,
+  viewAt,
+  type OrbitFrame,
+} from './camera-path';
+import { blendChapterState, createChapterState, type ChapterState } from './chapters';
+import { VIEW_STATES, type PageView } from './views';
 import { createChannel } from './channel';
 import { createGlow, type GlowModule } from './glow';
 import { createGpuTimer, type GpuTimer, type GpuTimings } from './gpu-timer';
@@ -61,6 +74,7 @@ import type { EmbersModule, LavaModule, PostChain, TerrainModule } from './layer
 
 export type { QualityTier, SceneTier } from './quality';
 export type { StoryMap } from './story-map';
+export type { PageView } from './views';
 
 type LayersModule = typeof import('./layers');
 
@@ -104,11 +118,13 @@ export interface SceneOptions {
   /** Hold this resolution scale (testing, cost measurements). */
   fixedScale?: number;
   /** Poster capture: every layer at once, frozen time (and story progress), drawing buffer kept. */
-  capture?: { time: number; progress?: number };
+  capture?: { time: number; progress?: number; view?: PageView };
   /** Dev only: object names to hide (sky, peaks, terrain, lava, monolith, embers, glow). */
   debugHide?: string[];
   /** Dev only: never add the post-processing layer. */
   debugNoPost?: boolean;
+  /** Dev only: no heat haze (to measure its cost). */
+  debugNoHaze?: boolean;
   /** Time each layer on the GPU (EXT_disjoint_timer_query_webgl2), for ?fps. */
   gpuTiming?: boolean;
 }
@@ -123,6 +139,28 @@ export interface SceneHandle {
   setStoryMap(map: StoryMap): void;
   /** Jump to a chapter's framing, for non-home pages. */
   setChapter(index: number): void;
+  /**
+   * Frame a content page (Phase 4), or `null` to follow the home story again.
+   * The camera glides there from wherever it is, unless `immediate` (first
+   * load, back/forward, reduced motion).
+   */
+  setView(view: PageView | null, options?: { immediate?: boolean }): void;
+  /** Highest resolution scale for the current page (content pages render lighter). */
+  setScaleCap(cap: number): void;
+  /**
+   * Lite on content pages: once the camera has arrived and every layer has
+   * faded in, stop rendering and hold the still frame until something needs
+   * motion again (a page change, the core flare, a resize).
+   */
+  setHoldWhenIdle(hold: boolean): void;
+  /** Brighten the core vein briefly (the contact form's success). */
+  flare(): void;
+  /** A brief heat shimmer over the whole view, as the page changes (High, Medium). */
+  shimmer(): void;
+  /** True while a held still frame is on screen (Lite on content pages). */
+  readonly holding: boolean;
+  /** True while the camera glides between framings. */
+  readonly gliding: boolean;
   /** Pointer position, normalised -1..1 (y up). */
   setPointer(x: number, y: number): void;
   pause(): void;
@@ -166,6 +204,39 @@ const POSTER_FPS = 24;
 const COMPILE_TIMEOUT_MS = 15000;
 /** Embers without the extras layer (the rest arrive with L6). */
 const BASE_EMBER_SHARE = 0.6;
+/** Frames rendered after everything settles before Lite holds its still. */
+const HOLD_AFTER_FRAMES = 3;
+/** The contact success flare: rise, then cool. */
+const FLARE_RISE_MS = 300;
+const FLARE_COOL_MS = 2400;
+/** The page-change shimmer: a quick swell, then it settles. */
+const SHIMMER_RISE_MS = 120;
+const SHIMMER_FALL_MS = 380;
+/** Headroom needed before the haze comes back after being dropped under load. */
+const HAZE_HOLD_MS = 4000;
+
+const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+function copyState(from: ChapterState, out: ChapterState) {
+  for (let k = 0; k < 4; k++) out.faceHeat[k] = from.faceHeat[k]!;
+  out.emberDensity = from.emberDensity;
+  out.lavaIntensity = from.lavaIntensity;
+  out.fissureGain = from.fissureGain;
+  out.glow = from.glow;
+  out.coreTemp = from.coreTemp;
+  return out;
+}
+
+function mixStates(a: ChapterState, b: ChapterState, t: number, out: ChapterState) {
+  const mix = (x: number, y: number) => x + (y - x) * t;
+  for (let k = 0; k < 4; k++) out.faceHeat[k] = mix(a.faceHeat[k]!, b.faceHeat[k]!);
+  out.emberDensity = mix(a.emberDensity, b.emberDensity);
+  out.lavaIntensity = mix(a.lavaIntensity, b.lavaIntensity);
+  out.fissureGain = mix(a.fissureGain, b.fissureGain);
+  out.glow = mix(a.glow, b.glow);
+  out.coreTemp = mix(a.coreTemp, b.coreTemp);
+  return out;
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -298,6 +369,26 @@ export async function createScene(
   };
   const chapterState = createChapterState();
   let storyMap: StoryMap = DEFAULT_STORY_MAP;
+  // Page views and glides between framings.
+  let view: PageView | null = capture?.view ?? null;
+  const targetFrame = createFrame();
+  /** The orbit frame the camera used last (before the dive, if any): where a glide starts. */
+  const frame = createFrame();
+  let framed = false;
+  const targetState = createChapterState();
+  let glide: {
+    from: OrbitFrame;
+    fromState: ChapterState;
+    elapsed: number;
+    duration: number;
+  } | null = null;
+  let flareAt = -1;
+  let shimmerAt = -1;
+  /** High's haze is wanted (dropped first under load, before resolution). */
+  let haze = !options.debugNoHaze;
+  let scaleCap = 1;
+  let holdWhenIdle = false;
+  let idleFrames = 0;
   /** Where the scroll is, and where the camera is (damped toward it). */
   let targetProgress = capture?.progress ?? 0;
   let cameraProgress = targetProgress;
@@ -448,7 +539,7 @@ export async function createScene(
       fade(w, (v) => embers.setFade(v), instant);
     } else if (layer === 5) {
       if (settings.post === 'none' || options.debugNoPost) return;
-      const post = mod.buildPost(renderer, w.scene, w.camera, settings, halfFloat);
+      const post = mod.buildPost(renderer, w.scene, w.camera, settings, halfFloat, noise);
       try {
         post.composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1, false);
         // The scene's materials drawing into the chain's target are new programs
@@ -500,7 +591,7 @@ export async function createScene(
     const width = Math.max(1, canvas.clientWidth);
     const height = Math.max(1, canvas.clientHeight);
     // The tier's DPR cap, then the resolution scale. CSS stretches the canvas to fill.
-    const dpr = Math.min(window.devicePixelRatio || 1, w.settings.dpr) * scale;
+    const dpr = Math.min(window.devicePixelRatio || 1, w.settings.dpr) * Math.min(scale, scaleCap);
     renderer.setPixelRatio(dpr);
     if (w.postActive && w.post) w.post.composer.setSize(width, height, false);
     else renderer.setSize(width, height, false);
@@ -508,7 +599,10 @@ export async function createScene(
     drawingHeight = height * dpr;
     w.camera.updateProjectionMatrix();
   };
-  const resizeObserver = new ResizeObserver(resize);
+  const resizeObserver = new ResizeObserver(() => {
+    resize();
+    kick();
+  });
 
   // ── Pointer heat ───────────────────────────────────────────────────────
   const pointerNdc = new Vector2(4, 4);
@@ -617,7 +711,41 @@ export async function createScene(
     if (Math.abs(targetProgress - cameraProgress) < 1e-5) cameraProgress = targetProgress;
     storyPosition(cameraProgress, storyMap, position);
 
-    cameraAt(position, camera.aspect, pose);
+    // Where the camera is headed: this page's view, or the story.
+    if (view) {
+      viewAt(view, camera.aspect, targetFrame);
+      copyState(VIEW_STATES[view], targetState);
+      if (view === 'notfound') {
+        // A slow drift past the edge of the plain.
+        targetFrame.theta += Math.sin(state.time * 0.045) * 0.035;
+        targetFrame.height += Math.sin(state.time * 0.031 + 0.8) * 1.6;
+      }
+    } else {
+      orbitAt(position.chapter, camera.aspect, targetFrame);
+      blendChapterState(position, targetState);
+    }
+
+    let dive = 0;
+    if (glide) {
+      glide.elapsed += dt * 1000;
+      const t = Math.min(1, glide.elapsed / glide.duration);
+      const e = easeInOutCubic(t);
+      glideFrame(glide.from, targetFrame, e, frame);
+      poseFromFrame(frame, pose);
+      mixStates(glide.fromState, targetState, e, chapterState);
+      if (t >= 1) glide = null;
+    } else if (view) {
+      copyFrame(targetFrame, frame);
+      poseFromFrame(frame, pose);
+      copyState(targetState, chapterState);
+    } else {
+      cameraAt(position, camera.aspect, pose);
+      copyFrame(targetFrame, frame);
+      copyState(targetState, chapterState);
+      dive = position.dive;
+    }
+    framed = true;
+
     // Idle drift breathes during the orbit and fades out as the camera nears the stone.
     idleOffset(state.time, drift).multiplyScalar(1 - pose.dive);
     camera.position.copy(pose.position).add(drift);
@@ -633,22 +761,47 @@ export async function createScene(
     w.embers?.setPointScale(pointScale);
     w.glow?.setPointScale(pointScale);
 
-    // Per-chapter scene state.
-    blendChapterState(position, chapterState);
+    // The contact success flare: the core vein opens a little and burns brighter.
+    let flare = 0;
+    if (flareAt >= 0) {
+      const since = fadeClock - flareAt;
+      flare =
+        since < FLARE_RISE_MS
+          ? since / FLARE_RISE_MS
+          : Math.max(0, 1 - (since - FLARE_RISE_MS) / FLARE_COOL_MS) ** 2;
+      if (since > FLARE_RISE_MS + FLARE_COOL_MS) flareAt = -1;
+    }
+
+    // Per-chapter (or per-view) scene state.
     state.faceHeat.fromArray(chapterState.faceHeat);
     state.emberDensity = chapterState.emberDensity;
     state.lavaIntensity = chapterState.lavaIntensity;
-    state.fissureGain = chapterState.fissureGain;
-    state.coreOpen = pose.dive;
-    w.shared.uGlow.value = chapterState.glow;
+    state.fissureGain = chapterState.fissureGain * (1 + 0.7 * flare);
+    state.coreOpen = Math.max(pose.dive, 0.22 * flare);
+    w.shared.uGlow.value = chapterState.glow * (1 + 0.35 * flare);
 
-    applyWash(w, position.dive);
+    applyWash(w, dive);
     if (w.post) {
       const f = w.post.fade;
       w.post.bloom.intensity =
-        (BLOOM_INTENSITY + BLOOM_DIVE * MathUtils.smoothstep(position.dive, 0, 0.5)) * f;
+        (BLOOM_INTENSITY + BLOOM_DIVE * MathUtils.smoothstep(dive, 0, 0.5) + 0.6 * flare) * f;
       w.post.vignette.darkness = VIGNETTE_DARKNESS * f;
       w.post.grain.blendMode.opacity.value = (capture ? 0 : GRAIN_OPACITY) * (1 - washAmount) * f;
+      // Heat: High's haze (unless dropped under load), and the page-change shimmer.
+      let shimmer = 0;
+      if (shimmerAt >= 0) {
+        const since = fadeClock - shimmerAt;
+        shimmer =
+          since < SHIMMER_RISE_MS
+            ? since / SHIMMER_RISE_MS
+            : Math.max(0, 1 - (since - SHIMMER_RISE_MS) / SHIMMER_FALL_MS);
+        shimmer = shimmer * shimmer * (3 - 2 * shimmer);
+        if (since > SHIMMER_RISE_MS + SHIMMER_FALL_MS) shimmerAt = -1;
+      }
+      w.post.heat.time = state.time;
+      w.post.heat.stoneDistance = Math.hypot(camera.position.x, camera.position.z);
+      w.post.heat.shimmer = shimmer * f;
+      w.post.heat.haze = w.post.hazeCapable && haze ? f * (1 - washAmount) : 0;
     }
 
     updatePointer(w, dt);
@@ -663,7 +816,8 @@ export async function createScene(
   const prepareCore = async (w: World) => {
     resize();
     storyPosition(cameraProgress, storyMap, position);
-    cameraAt(position, w.camera.aspect, pose);
+    if (view) poseFromFrame(viewAt(view, w.camera.aspect, frame), pose);
+    else cameraAt(position, w.camera.aspect, pose);
     w.camera.position.copy(pose.position);
     w.camera.lookAt(pose.target);
     w.camera.updateMatrixWorld();
@@ -733,6 +887,10 @@ export async function createScene(
   // ── Loop, pacing and the controller ───────────────────────────────────
   let raf = 0;
   let running = false;
+  /** The page wants the scene running (resume) or not (pause: hidden tab, offscreen). */
+  let wanted = false;
+  /** Lite on a content page, holding its still frame. */
+  let held = false;
   let disposed = false;
   let firstFrame = false;
   let lastTick = 0;
@@ -779,6 +937,13 @@ export async function createScene(
       );
     }
     decide(`extras ${on ? 'on' : 'off'} (${why})`);
+    unsettle(SETTLE_FRAMES_SMALL);
+  };
+
+  const setHaze = (on: boolean, why: string) => {
+    if (haze === on) return;
+    haze = on;
+    decide(`haze ${on ? 'on' : 'off'} (${why})`);
     unsettle(SETTLE_FRAMES_SMALL);
   };
 
@@ -864,7 +1029,9 @@ export async function createScene(
     if (average > budget * 1.15) {
       headroomSince = 0;
       const why = `frame ${average.toFixed(1)} ms > ${(budget * 1.15).toFixed(1)}`;
-      if (scale > SCALE_MIN + 1e-3) setScale(scale - SCALE_DOWN, why);
+      const effective = Math.min(scale, scaleCap);
+      if (haze && w.post?.hazeCapable) setHaze(false, why);
+      else if (effective > SCALE_MIN + 1e-3) setScale(effective - SCALE_DOWN, why);
       else if (extras) setExtras(false, why);
       else if (!options.fixedTier) {
         const lower = lowerTier(w.tier);
@@ -890,20 +1057,30 @@ export async function createScene(
       headroomSince = now;
       rawMax = 0;
     }
-    const held = now - headroomSince;
-    if (scale < 1 && held >= SCALE_UP_HOLD_MS) {
+    const holdMs = now - headroomSince;
+    if (scale < scaleCap && holdMs >= SCALE_UP_HOLD_MS) {
       setScale(
         scale + SCALE_UP,
-        `holding ${average.toFixed(1)} ms for ${(held / 1000).toFixed(1)} s`,
+        `holding ${average.toFixed(1)} ms for ${(holdMs / 1000).toFixed(1)} s`,
       );
-    } else if (!extras && w.layer >= 6 && held >= EXTRAS_HOLD_MS) {
+    } else if (!extras && w.layer >= 6 && holdMs >= EXTRAS_HOLD_MS) {
       setExtras(true, 'frame budget allows');
-    } else if (scale >= 1 && extras && held >= UPGRADE_HOLD_MS) {
-      const next = canUpgrade(w);
+    } else if (
+      !haze &&
+      !options.debugNoHaze &&
+      w.post?.hazeCapable &&
+      extras &&
+      scale >= scaleCap &&
+      holdMs >= HAZE_HOLD_MS
+    ) {
+      setHaze(true, 'frame budget allows');
+    } else if (scale >= scaleCap && extras && holdMs >= UPGRADE_HOLD_MS) {
+      // A capped page renders lighter than home: no evidence for a heavier tier there.
+      const next = scaleCap >= 1 ? canUpgrade(w) : null;
       if (next && upgradeEvidence(w, next)) {
         void switchTier(
           next,
-          `headroom for ${(held / 1000).toFixed(0)} s at full resolution`,
+          `headroom for ${(holdMs / 1000).toFixed(0)} s at full resolution`,
           'up',
         );
       } else {
@@ -946,6 +1123,16 @@ export async function createScene(
       return;
     }
     control(w, since, now);
+
+    // Lite on content pages: hold the still once nothing is moving.
+    if (holdWhenIdle && !glide && flareAt < 0 && w.layer >= 6 && !w.fades.length && !switching) {
+      if (++idleFrames > HOLD_AFTER_FRAMES) {
+        held = true;
+        stopLoop();
+      }
+    } else {
+      idleFrames = 0;
+    }
   };
 
   /** L2–L6, each once the previous one has faded in; L1 is already on screen. */
@@ -973,18 +1160,36 @@ export async function createScene(
     phase('L6 extras', extras ? 'on' : 'deferred');
   };
 
-  const pause = () => {
+  const stopLoop = () => {
     running = false;
     cancelAnimationFrame(raf);
   };
 
-  const resume = () => {
+  const startLoop = () => {
     if (running || disposed) return;
     running = true;
+    held = false;
+    idleFrames = 0;
     lastTick = performance.now();
     lastRender = 0;
     unsettle();
     raf = requestAnimationFrame(tick);
+  };
+
+  const pause = () => {
+    wanted = false;
+    stopLoop();
+  };
+
+  const resume = () => {
+    wanted = true;
+    startLoop();
+  };
+
+  /** Something needs motion: wake a held still (only if the page wants the scene running). */
+  const kick = () => {
+    idleFrames = 0;
+    if (wanted && !running) startLoop();
   };
 
   const onContextLost = (event: Event) => {
@@ -1013,6 +1218,12 @@ export async function createScene(
     get cameraProgress() {
       return cameraProgress;
     },
+    get holding() {
+      return held;
+    },
+    get gliding() {
+      return glide !== null;
+    },
     gpuTimings: () => timer?.read() ?? null,
     stats() {
       const w = world;
@@ -1021,9 +1232,12 @@ export async function createScene(
       const layer = w.layer >= 6 ? 'L1–L6' : `L1–L${w.layer}`;
       return [
         `setup ${describe()} · ${layer}${atlas ? ` · atlas ${atlas.source}` : ''}`,
-        `scale ${scale.toFixed(2)} × dpr ${dpr.toFixed(2)} = ${(scale * dpr).toFixed(2)}` +
-          (options.fixedScale !== undefined ? ' (fixed)' : ''),
-        `target ${w.settings.fps} fps · frame ${lastFrameMs ? lastFrameMs.toFixed(1) : '…'} ms · extras ${extras ? 'on' : 'off'}`,
+        `scale ${Math.min(scale, scaleCap).toFixed(2)} × dpr ${dpr.toFixed(2)} = ${(Math.min(scale, scaleCap) * dpr).toFixed(2)}` +
+          (scaleCap < 1 ? ` (page cap ${scaleCap.toFixed(2)})` : '') +
+          (options.fixedScale !== undefined ? ' (fixed)' : '') +
+          (view ? ` · view ${view}${held ? ', held' : ''}` : ''),
+        `target ${w.settings.fps} fps · frame ${lastFrameMs ? lastFrameMs.toFixed(1) : '…'} ms · extras ${extras ? 'on' : 'off'}` +
+          (w.post?.hazeCapable ? ` · haze ${haze ? 'on' : 'off'}` : ''),
         ...decisions.map((d) => `· ${d}`),
       ];
     },
@@ -1041,6 +1255,50 @@ export async function createScene(
     },
     setPointer(x, y) {
       pointerNdc.set(x, y);
+    },
+    setView(next, { immediate = false } = {}) {
+      if (capture) return;
+      if (next === view && !immediate) return;
+      const w = world;
+      if (immediate || !w || !framed) {
+        glide = null;
+      } else {
+        // Glide from wherever the camera is now (mid-glide included) to the new framing.
+        const from = copyFrame(frame, createFrame());
+        const to = createFrame();
+        if (next) viewAt(next, w.camera.aspect, to);
+        else
+          orbitAt(storyPosition(cameraProgress, storyMap, position).chapter, w.camera.aspect, to);
+        glide = {
+          from,
+          fromState: copyState(chapterState, createChapterState()),
+          elapsed: 0,
+          duration: glideDuration(from, to),
+        };
+      }
+      view = next;
+      kick();
+    },
+    setScaleCap(cap) {
+      const next = MathUtils.clamp(cap, SCALE_MIN, 1);
+      if (next === scaleCap) return;
+      scaleCap = next;
+      resize();
+      unsettle(SETTLE_FRAMES_SMALL);
+      kick();
+    },
+    setHoldWhenIdle(hold) {
+      holdWhenIdle = hold;
+      if (!hold) kick();
+    },
+    flare() {
+      flareAt = fadeClock;
+      kick();
+    },
+    shimmer() {
+      if (!world?.postActive) return;
+      shimmerAt = fadeClock;
+      kick();
     },
     pause,
     resume,

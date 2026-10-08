@@ -1,0 +1,111 @@
+---
+/**
+ * The custom cursor's elements (lib/cursor.ts drives them). Decorative and
+ * persisted across page changes; invisible until the script turns it on, which
+ * it only does on desktops with a fine pointer and motion allowed. The native
+ * cursor always stays visible underneath.
+ */
+---
+
+<div
+  class="cursor"
+  aria-hidden="true"
+  data-cursor-root
+  data-state="hidden"
+  transition:persist="cursor"
+>
+  <div class="cursor__ring" data-cursor-ring>
+    <span class="cursor__shape"></span>
+    <span class="cursor__label" data-cursor-label></span>
+  </div>
+  <div class="cursor__dot" data-cursor-dot></div>
+</div>
+
+<style>
+  .cursor {
+    display: none;
+  }
+
+  :global(html.cursor-on) .cursor {
+    display: block;
+    position: fixed;
+    inset: 0 auto auto 0;
+    z-index: var(--z-cursor);
+    pointer-events: none;
+  }
+
+  .cursor__ring,
+  .cursor__dot {
+    position: fixed;
+    top: 0;
+    left: 0;
+    will-change: transform;
+  }
+
+  .cursor__shape {
+    position: absolute;
+    top: -14px;
+    left: -14px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgb(var(--bone-rgb) / 0.7);
+    border-radius: 50%;
+    transition:
+      transform var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      background-color var(--dur-base) var(--ease-out),
+      opacity var(--dur-fast) var(--ease-out);
+  }
+
+  .cursor__dot {
+    margin: -2px 0 0 -2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--bone);
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+
+  .cursor__label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translate(-50%, -50%);
+    color: var(--basalt);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: var(--tracking-mono);
+    text-transform: uppercase;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+
+  /* Over links and buttons: larger and warmer. */
+  .cursor[data-state='link'] .cursor__shape {
+    transform: scale(1.6);
+    border-color: var(--lava);
+    background: rgb(var(--lava-rgb) / 0.12);
+  }
+
+  /* Over project rows and cards ("View") and the Lab's sliders ("Drag"). */
+  .cursor:is([data-state='view'], [data-state='drag']) .cursor__shape {
+    transform: scale(2.5);
+    border-color: var(--lava);
+    background: var(--lava);
+  }
+
+  .cursor:is([data-state='view'], [data-state='drag']) .cursor__label {
+    opacity: 1;
+  }
+
+  .cursor:is([data-state='view'], [data-state='drag']) .cursor__dot {
+    opacity: 0;
+  }
+
+  /* Over text fields, the booking embed, or outside the window: native cursor only. */
+  .cursor[data-state='hidden'] :is(.cursor__shape, .cursor__dot, .cursor__label) {
+    opacity: 0;
+  }
+</style>

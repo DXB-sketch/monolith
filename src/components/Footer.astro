@@ -15,7 +15,7 @@ const year = new Date().getFullYear();
     {cta && (
       <div class="footer__lead">
         <p class="footer__cta-line heading">Have a project in mind? I’d like to hear about it.</p>
-        <a class="btn btn--primary" href={CTA.href}>
+        <a class="btn btn--primary" href={CTA.href} data-magnetic>
           {CTA.label}
           <span class="btn__arrow" aria-hidden="true">
             →
@@ -59,6 +59,9 @@ const year = new Date().getFullYear();
           ))}
           <li>
             <a href={CTA.href}>Contact</a>
+          </li>
+          <li>
+            <a href="/privacy">Privacy</a>
           </li>
         </ul>
       </nav>

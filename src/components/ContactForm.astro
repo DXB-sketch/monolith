@@ -82,7 +82,16 @@ const FORM_ERRORS = {
       </ul>
     </div>
 
-    <p class="brief__progress label" aria-live="polite" data-brief-progress hidden></p>
+    {/* JS only (the multi-step form); shown from first paint so nothing shifts when the script starts. */}
+    <p class="brief__progress label" aria-live="polite" data-brief-progress>
+      Step 1 of {STEPS.length}
+    </p>
+    {/* Decorative: each completed step leaves a thin lava line (the text above says it in words). */}
+    <ol class="brief__track" aria-hidden="true" data-brief-track>
+      {STEPS.map((_, i) => (
+        <li class={i === 0 ? 'is-current' : undefined} />
+      ))}
+    </ol>
 
     {STEPS.map((step, index) => (
       <fieldset class="brief__step" data-brief-step={step.id} id={`step-${step.id}`}>
@@ -118,6 +127,10 @@ const FORM_ERRORS = {
 
         {step.id === 'details' && (
           <div class="brief__fields">
+            <p class="brief__privacy">
+              These details come to me by email so I can reply.{' '}
+              <a href="/privacy">How the site handles your details</a>.
+            </p>
             <div class="field">
               <label for="field-name">Name</label>
               <p class="brief__error" id={describe('name')} hidden={!errors.name}>
@@ -286,8 +299,36 @@ const FORM_ERRORS = {
     outline-offset: 4px;
   }
 
-  .brief__progress[hidden] {
+  .brief__progress[hidden],
+  .brief__track[hidden],
+  :global(html:not(.js)) .brief__progress,
+  :global(html:not(.js)) .brief__track {
     display: none;
+  }
+
+  .brief__track {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-2xs);
+    margin: calc(var(--space-s) * -1) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .brief__track li {
+    height: 1px;
+    background: var(--obsidian-edge);
+    transition: background-color var(--dur-slow) var(--ease-out);
+  }
+
+  .brief__track li.is-current,
+  .brief__track li:global(.is-current) {
+    background: rgb(var(--bone-rgb) / 0.5);
+  }
+
+  .brief__track li.is-done,
+  .brief__track li:global(.is-done) {
+    background: var(--lava);
   }
 
   .brief__step {
@@ -364,6 +405,11 @@ const FORM_ERRORS = {
     display: grid;
     gap: var(--space-m);
     clear: both;
+  }
+
+  .brief__privacy {
+    font-size: var(--step--1);
+    color: var(--ash);
   }
 
   .field {

@@ -30,6 +30,8 @@ const work = defineCollection({
       order: z.number().int(),
       /** Concepts are labelled as such on every card and on their page. */
       isConcept: z.boolean(),
+      /** Drafts are left out of every build except `astro dev` (and so out of the placeholder gate). */
+      draft: z.boolean().default(false),
       cover: image(),
       coverAlt: z.string(),
       gallery: z
@@ -96,6 +98,8 @@ const lab = defineCollection({
       /** Key of an interactive demo (src/lab/demos.ts), loaded only on its page. */
       demo: z.string().optional(),
       tags: z.array(z.string()).default([]),
+      /** Drafts are left out of every build except `astro dev`. */
+      draft: z.boolean().default(false),
     }),
 });
 

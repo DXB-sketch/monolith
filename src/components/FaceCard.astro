@@ -14,7 +14,7 @@ const Heading = `h${level}` as 'h2' | 'h3';
 const titleId = `project-${project.slug}`;
 ---
 
-<article class="face-card" aria-labelledby={titleId}>
+<article class="face-card" aria-labelledby={titleId} data-sheen data-cursor="view">
   <div class="face-card__meta">
     <p class="label">{project.clientType}</p>
     {project.isConcept && <p class="face-card__badge label">Concept</p>}
@@ -64,6 +64,11 @@ const titleId = `project-${project.slug}`;
     border-top: var(--rule-accent);
     border-radius: var(--radius-panel);
     background: var(--panel-bg);
+  }
+  @media (max-width: 22rem) {
+    .face-card {
+      padding-inline: var(--space-m);
+    }
   }
 
   .face-card__meta {

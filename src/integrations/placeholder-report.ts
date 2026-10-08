@@ -1,11 +1,20 @@
 /**
- * Lists every content entry (and every page, component or data file) that
- * still contains a bracketed placeholder from docs/BRIEF.md ("[STUDIO EMAIL]",
- * "[$ PRICE]", "[TO BE SUPPLIED]"…), so the owner can see what's missing.
- * These are the build's only expected warnings.
+ * The placeholder gate (Phase 5; Phase 3's report, made strict).
+ *
+ * After every build it lists what's still missing, grouped by page:
+ *
+ * - every built page (the HTML as shipped, so titles, descriptions, alt text,
+ *   Open Graph tags and structured data are all checked, and draft entries,
+ *   which are not built, are not);
+ * - the on-demand pages, which have no HTML at build time (/contact, its
+ *   success state and booking), from their source;
+ * - the site URL itself, while it is still the placeholder origin.
+ *
+ * Production builds (VERCEL_ENV=production, or STRICT_CONTENT=1 anywhere)
+ * fail while anything is listed. Preview and local builds only warn.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
 
@@ -18,6 +27,26 @@ import type { AstroIntegration } from 'astro';
 export const PLACEHOLDER =
   /(?<![\w\])])\[(?:(?=[^\]\n]*[A-Z]{2})[A-Z0-9$][^\]\na-z]*|\$[A-Z])\](?!\s*:)/g;
 
+/** The origin used until PUBLIC_SITE_URL is set (astro.config.mjs). */
+const SITE_PLACEHOLDER = 'https://monolith.example';
+
+/** Source of the pages rendered on demand (no HTML exists for them at build time). */
+const ON_DEMAND_SOURCES: [string, string[]][] = [
+  [
+    '/contact',
+    [
+      'src/pages/contact.astro',
+      'src/components/ContactForm.astro',
+      'src/components/ContactSuccess.astro',
+      'src/components/BookCall.astro',
+      'src/lib/contact-fields.ts',
+    ],
+  ],
+];
+
+export const strictContent = () =>
+  process.env.VERCEL_ENV === 'production' || process.env.STRICT_CONTENT === '1';
+
 /** Every file under `dir` with one of the extensions. */
 function walk(dir: string, extensions: string[]): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -27,42 +56,70 @@ function walk(dir: string, extensions: string[]): string[] {
   });
 }
 
+/** "/work/seqdvgc" from ".../static/work/seqdvgc/index.html". */
+function routeOf(staticDir: string, file: string) {
+  const path = relative(staticDir, file).split(sep).join('/');
+  return `/${path.replace(/(^|\/)index\.html$/, '').replace(/\.html$/, '')}`;
+}
+
+/** Decode the few entities that can appear inside a placeholder in HTML. */
+const decode = (html: string) =>
+  html
+    .replace(/&#36;|&dollar;/g, '$')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+
 export function placeholderReport(): AstroIntegration {
+  let site = SITE_PLACEHOLDER;
   return {
     name: 'monolith-placeholder-report',
     hooks: {
-      'astro:build:done': ({ logger }) => {
+      'astro:config:done': ({ config }) => {
+        site = config.site?.replace(/\/$/, '') ?? SITE_PLACEHOLDER;
+      },
+      'astro:build:done': ({ dir, logger }) => {
         const root = fileURLToPath(new URL('../../', import.meta.url));
-        const src = join(root, 'src');
-        const groups: [string, string[]][] = [
-          ['Content entries', walk(join(src, 'content'), ['.md', '.mdx'])],
-          [
-            'Pages, components and site data',
-            [
-              ...walk(join(src, 'pages'), ['.astro', '.ts']),
-              ...walk(join(src, 'components'), ['.astro']),
-              ...walk(join(src, 'lib'), ['.ts']),
-            ],
-          ],
-        ];
-        let total = 0;
-        const lines: string[] = [];
-        for (const [title, files] of groups) {
-          const found = files
-            .map((file) => {
-              const matches = readFileSync(file, 'utf8').match(PLACEHOLDER) ?? [];
-              return { file: relative(root, file), matches: [...new Set(matches)] };
-            })
-            .filter(({ matches }) => matches.length);
-          if (!found.length) continue;
-          lines.push(`${title}:`);
-          for (const { file, matches } of found) {
-            total += matches.length;
-            lines.push(`  ${file}: ${matches.join(', ')}`);
+        const staticDir = fileURLToPath(dir);
+        const byPage = new Map<string, Set<string>>();
+        const add = (page: string, found: Iterable<string>) => {
+          const set = byPage.get(page) ?? new Set<string>();
+          for (const item of found) set.add(item);
+          if (set.size) byPage.set(page, set);
+        };
+
+        for (const file of walk(staticDir, ['.html'])) {
+          add(
+            routeOf(staticDir, file),
+            decode(readFileSync(file, 'utf8')).match(PLACEHOLDER) ?? [],
+          );
+        }
+        for (const [page, sources] of ON_DEMAND_SOURCES) {
+          for (const source of sources) {
+            add(
+              `${page} (on demand)`,
+              readFileSync(join(root, source), 'utf8').match(PLACEHOLDER) ?? [],
+            );
           }
         }
-        if (total) logger.warn(`${total} placeholders still to supply:\n${lines.join('\n')}`);
-        else logger.info('No placeholders left.');
+        if (site === SITE_PLACEHOLDER) add('Site URL', ['[DOMAIN] (set PUBLIC_SITE_URL)']);
+
+        const pages = [...byPage.keys()].sort();
+        const distinct = new Set(pages.flatMap((page) => [...byPage.get(page)!]));
+        if (!pages.length) {
+          logger.info('Placeholder gate: nothing left to supply.');
+          return;
+        }
+        const lines = pages.map((page) => `  ${page}: ${[...byPage.get(page)!].join(', ')}`);
+        const summary = `${distinct.size} placeholders still to supply, on ${pages.length} pages:\n${lines.join('\n')}`;
+        if (strictContent()) {
+          throw new Error(
+            `Placeholder gate: this is a production build (VERCEL_ENV=production or STRICT_CONTENT=1) and ${summary}\n` +
+              'Fill these in (see LAUNCH.md, step 1), or set a content entry to `draft: true` to leave it out.',
+          );
+        }
+        logger.warn(
+          `${summary}\n  (Preview build: warning only. Production builds fail until these are filled.)`,
+        );
       },
     },
   };

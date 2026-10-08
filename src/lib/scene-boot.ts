@@ -3,8 +3,11 @@
  * WebGL scene has rendered a frame, and owns the scene's lifecycle.
  *
  * This file is in the initial bundle, so it never imports Three.js. The scene
- * is a separate chunk, executed only for the live tiers (High, Medium, Lite) on
- * pages that mark a scene region with `data-scene-anchor`.
+ * is a separate chunk, executed only for the live tiers (High, Medium, Lite):
+ * on the home page while its story region (`data-scene-anchor`) is on screen,
+ * and on content pages, which name their own view of the stone
+ * (`main[data-scene-view]`, Phase 4) and render it lighter (a resolution cap;
+ * Lite holds a still frame once the camera has arrived).
  *
  * The tier is reactive state. It starts from cheap signals or this session's
  * memory (or "pending" while the GPU is checked after first paint) and can
@@ -40,8 +43,10 @@ import {
   type QualityTier,
 } from '../scene/quality';
 import type { SceneHandle, StoryMap } from '../scene/index';
+import { isPageView, VIEW_SCALE_CAP, type PageView } from '../scene/views';
 import type { StoryBridge, StoryController, StoryMode } from './story';
 import type { RevealController } from './reveal';
+import { onLeave, posterReason, track } from './analytics';
 
 /** Upper bounds for each boot step, so no path can hang. */
 const TIER_TIMEOUT_MS = 4000;
@@ -52,6 +57,8 @@ const FIRST_FRAME_TIMEOUT_MS = 8000;
 const CONTEXT_RESTORE_TIMEOUT_MS = 10000;
 /** After `load`, how long the GPU check may run before the scene chunk is prefetched. */
 const PREFETCH_DELAY_MS = 1000;
+/** After the first frame, how long before the visit's tier counts as settled (analytics). */
+const TIER_SETTLE_MS = 5000;
 /** Matches --dur-fade: the canvas's cross-fade over the poster. */
 const CROSSFADE_MS = 1200;
 
@@ -81,6 +88,9 @@ let prefetched = false;
 /** Why the tier is what it is, for the poster's recorded reason. */
 let tierReason = '';
 let posterReasonRecorded = false;
+/** Why the live scene last gave way to the poster (failed setup, no frame, lost context). */
+let teardownReason = '';
+let tierReported = false;
 
 let handle: SceneHandle | null = null;
 /** Bumped whenever an in-flight scene load must be abandoned. */
@@ -95,6 +105,10 @@ let atlasFetch: Promise<Blob> | null = null;
 
 let anchor: Element | null = null;
 let anchorVisible = false;
+/** This page's view of the stone (content pages), or null (home, story). */
+let pageView: PageView | null = null;
+/** How the current page was reached: a link, back/forward, or the first load. */
+let navigationType: 'initial' | 'push' | 'replace' | 'traverse' = 'initial';
 let observer: IntersectionObserver | null = null;
 let started = false;
 
@@ -140,10 +154,15 @@ function afterFirstPaint(task: () => void) {
   });
 }
 
+/** The scene has somewhere to be: the home story on screen, or a content page's view. */
+const sceneWanted = () => Boolean(pageView) || Boolean(anchor);
+const sceneActive = () => Boolean(pageView) || (Boolean(anchor) && anchorVisible);
+
 function sync() {
   const el = stage();
-  const active = Boolean(anchor) && anchorVisible;
+  const active = sceneActive();
   el?.classList.toggle('is-dormant', !active);
+  el?.classList.toggle('is-view', Boolean(pageView));
   if (!handle) return;
   if (active && !document.hidden) handle.resume();
   else handle.pause();
@@ -178,18 +197,23 @@ function setTier(next: QualityTier, reason: string, fromScene = false) {
 
   if (isSceneTier(next)) {
     if (!fromScene) void ensureScene();
+    // Lite holds stills on content pages; the tiers above it keep rendering.
+    else handle?.setHoldWhenIdle(Boolean(pageView) && next === 'lite');
   } else if (handle || sceneLoading) {
     teardownScene(`tier ${next}: ${reason}`);
   } else {
     recordPosterTier();
   }
-  if (next === 'poster') document.dispatchEvent(new CustomEvent('monolith:poster'));
+  if (next === 'poster') {
+    document.dispatchEvent(new CustomEvent('monolith:poster'));
+    reportTier();
+  }
   story?.setMode(storyMode());
 }
 
 /** On a scene page whose tier rules the scene out, say why the poster is showing (once). */
 function recordPosterTier() {
-  if (!anchor || pending || isSceneTier(tier) || posterReasonRecorded) return;
+  if (!sceneWanted() || pending || isSceneTier(tier) || posterReasonRecorded) return;
   posterReasonRecorded = true;
   fallback(`poster: tier ${tier} (${tierReason})`);
 }
@@ -244,6 +268,29 @@ function prefetchScene() {
   mark('scene chunk prefetch');
 }
 
+// ── Analytics ─────────────────────────────────────────────────────────────
+
+/**
+ * `scene_tier`, once per visit: what the visitor actually got. Sent when the
+ * poster is decided, a few seconds after the live scene's first frame (so an
+ * early step down in place counts), or when the page is first hidden.
+ * `live: false` with a live tier means the scene hadn't rendered yet (the
+ * visitor left first); the poster carries a short reason category.
+ */
+function reportTier() {
+  if (tierReported) return;
+  tierReported = true;
+  if (pending) return track('scene_tier', { tier: 'pending', live: false });
+  const live = Boolean(handle && firstFrameSeen);
+  if (live) return track('scene_tier', { tier: handle!.tier, live });
+  if (isSceneTier(tier) && !sceneBlocked) return track('scene_tier', { tier, live });
+  track('scene_tier', {
+    tier: 'poster',
+    live,
+    reason: posterReason(sceneBlocked ? teardownReason : tierReason),
+  });
+}
+
 // ── Scene ─────────────────────────────────────────────────────────────────
 
 /** The scroll story talks to the scene only through this bridge: always the current handle. */
@@ -263,6 +310,25 @@ function flushQueue() {
   if (!handle) return;
   if (queuedMap) handle.setStoryMap(queuedMap);
   if (queuedProgress !== null) handle.setProgress(queuedProgress, true);
+  applyView(true);
+}
+
+/**
+ * Point the camera at this page's view (or back at the story) and set the
+ * page's cost: content pages render at a capped resolution, and Lite holds a
+ * still frame there. The camera glides unless the move should be instant:
+ * the first load, back/forward (restore, don't replay), reduced motion.
+ */
+function applyView(immediate = false) {
+  if (!handle) return;
+  const instant =
+    immediate ||
+    navigationType === 'initial' ||
+    navigationType === 'traverse' ||
+    prefersReducedMotion();
+  handle.setView(pageView, { immediate: instant });
+  handle.setScaleCap(pageView ? VIEW_SCALE_CAP[pageView] : 1);
+  handle.setHoldWhenIdle(Boolean(pageView) && handle.tier === 'lite');
 }
 
 function setWash(amount: number, css: string) {
@@ -276,6 +342,8 @@ function onFirstFrame() {
   firstFrameSeen = true;
   clearTimeout(firstFrameTimer);
   mark('first frame');
+  teardownReason = '';
+  setTimeout(reportTier, TIER_SETTLE_MS);
   stage()?.classList.add('is-live');
   // The intro (first visit) can open now: L1 is on screen.
   document.dispatchEvent(new CustomEvent('monolith:scene-ready'));
@@ -313,6 +381,8 @@ function teardownScene(reason: string, { loseContext = false } = {}) {
   stage()?.classList.remove('is-live');
   setWash(0, '');
   fallback(`poster: ${reason}`);
+  teardownReason = reason;
+  if (sceneBlocked) reportTier();
   // Let the canvas fade back to the poster before releasing the GPU resources.
   if (current) setTimeout(() => current.dispose({ loseContext }), CROSSFADE_MS + 100);
 }
@@ -358,7 +428,8 @@ function fetchAtlas(): Promise<Blob> | undefined {
 }
 
 async function ensureScene() {
-  if (handle || sceneLoading || sceneBlocked || !anchor || pending || !isSceneTier(tier)) return;
+  if (handle || sceneLoading || sceneBlocked || !sceneWanted() || pending || !isSceneTier(tier))
+    return;
   const target = canvas();
   if (!target) return;
   const token = ++sceneToken;
@@ -522,9 +593,18 @@ let countTriggers: (() => number) | null = null;
 
 // ── Pages ─────────────────────────────────────────────────────────────────
 
+let navigatingTimer = 0;
+let resumeTimer = 0;
+
 /** Called on first load and after every ClientRouter navigation. */
 function onPage() {
   applyRootState();
+  // The stone's dip during a page change lifts as the new page settles.
+  clearTimeout(resumeTimer);
+  clearTimeout(navigatingTimer);
+  navigatingTimer = window.setTimeout(() => stage()?.classList.remove('is-navigating'), 260);
+  const declared = document.querySelector<HTMLElement>('main')?.dataset.sceneView;
+  pageView = isPageView(declared) ? declared : null;
   const next = document.querySelector('[data-scene-anchor]');
   if (next !== anchor || !observer) {
     observer?.disconnect();
@@ -540,12 +620,15 @@ function onPage() {
         { threshold: 0 },
       );
       observer.observe(anchor);
-      detect();
-      recordPosterTier();
-      void ensureScene();
     }
-    sync();
   }
+  if (sceneWanted()) {
+    detect();
+    recordPosterTier();
+    void ensureScene();
+  }
+  applyView();
+  sync();
   void mountStory();
   void mountPageReveals();
 }
@@ -584,13 +667,32 @@ export function initSceneBoot() {
   document.fonts?.ready.then(() => mark('fonts ready'));
   document.addEventListener('astro:after-swap', () => applyRootState());
   document.addEventListener('astro:page-load', onPage);
+  document.addEventListener('astro:before-preparation', (event) => {
+    navigationType = (event as Event & { navigationType: typeof navigationType }).navigationType;
+    clearTimeout(navigatingTimer);
+    stage()?.classList.add('is-navigating');
+    // The new page never waits for the scene: rendering pauses (under the dip)
+    // while the page is fetched and swapped, so a heavy frame can't hold up the
+    // view transition's snapshot. onPage() resumes it; the timer is a safety
+    // net for a navigation that is abandoned before it swaps.
+    handle?.pause();
+    clearTimeout(resumeTimer);
+    resumeTimer = window.setTimeout(sync, 3000);
+  });
   // Kill the home story's triggers and scroll listeners before the page is swapped.
   document.addEventListener('astro:before-swap', (event) => {
     stampIncoming(event);
     unmountStory();
     unmountPageReveals();
+    // The new page arrives through a brief heat shimmer (High, Medium); back and
+    // forward restore at once instead, and reduced motion never shimmers.
+    if (navigationType !== 'traverse' && !prefersReducedMotion()) handle?.shimmer();
   });
   document.addEventListener('visibilitychange', sync);
+  // The contact form's success: the core vein flares (High, Medium and Lite).
+  document.addEventListener('monolith:flare', () => {
+    if (!prefersReducedMotion()) handle?.flare();
+  });
 
   matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
     if (!prefersReducedMotion()) return;
@@ -599,6 +701,7 @@ export function initSceneBoot() {
   });
 
   bindPointer();
+  onLeave(reportTier);
   onPage();
   setSceneStats(() =>
     handle ? { gpu: handle.gpuTimings()?.ms ?? null, lines: handle.stats() } : null,
@@ -616,6 +719,9 @@ export function initSceneBoot() {
         queuedProgress,
         blocked: sceneBlocked || null,
         page: location.pathname,
+        view: pageView,
+        holding: handle?.holding ?? null,
+        gliding: handle?.gliding ?? null,
         triggers: countTriggers?.() ?? 0,
         reveals: pageReveals?.pending ?? null,
       }),

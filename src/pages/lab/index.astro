@@ -1,10 +1,11 @@
 ---
+import { published } from '../../lib/work';
 import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageIntro from '../../components/PageIntro.astro';
 import NextStep from '../../components/NextStep.astro';
 
-const entries = (await getCollection('lab')).sort(
+const entries = (await getCollection('lab', published)).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
 );
 const dateFormat = new Intl.DateTimeFormat('en-AU', {
@@ -15,6 +16,8 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
 ---
 
 <BaseLayout
+  og="lab"
+  view="lab"
   footerCta={false}
   title="Lab"
   description="Experiments from Monolith Web Studio: shaders, motion studies and interaction ideas, tested here before they reach a client’s site."
@@ -34,7 +37,7 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
       <ul class="lab-grid">
         {entries.map((entry) => (
           <li data-reveal>
-            <article class="lab-card">
+            <article class="lab-card" data-sheen data-cursor="view">
               <p class="label">
                 <time datetime={entry.data.date.toISOString().slice(0, 10)}>
                   {dateFormat.format(entry.data.date)}

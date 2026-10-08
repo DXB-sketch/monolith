@@ -5,8 +5,12 @@ import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
 import SceneStage from '../components/SceneStage.astro';
 import Intro from '../components/Intro.astro';
+import Cursor from '../components/Cursor.astro';
+import Analytics from '@vercel/analytics/astro';
+import SpeedInsights from '@vercel/speed-insights/astro';
 import { SITE } from '../lib/site';
 import { PALETTE_HEX } from '../scene/palette';
+import type { PageView } from '../scene/views';
 
 interface Props {
   title?: string;
@@ -15,11 +19,31 @@ interface Props {
   mainClass?: string;
   /** The footer's "Start a project" lead; off where the page ends on its own CTA or is the form. */
   footerCta?: boolean;
+  /** This page's view of the stone (content pages); the home page follows its story instead. */
+  view?: PageView;
+  /** This page's Open Graph image: public/og/<og>.jpg (npm run og). */
+  og?: string;
+  /** Structured data (schema.org JSON-LD) for this page. */
+  jsonLd?: object | object[];
+  /** Keep this page out of search results (e.g. the contact form's thank-you page). */
+  noindex?: boolean;
 }
 
-const { title, description = SITE.description, mainClass, footerCta = true } = Astro.props;
-const fullTitle = title ? `${title} · ${SITE.name}` : `${SITE.name} · Wamuran, Queensland`;
-const canonical = new URL(Astro.url.pathname, Astro.site);
+const {
+  title,
+  description = SITE.description,
+  mainClass,
+  footerCta = true,
+  view,
+  og = 'home',
+  jsonLd,
+  noindex = false,
+} = Astro.props;
+const fullTitle = title ? `${title} — ${SITE.name}` : `${SITE.name} — Wamuran, Queensland`;
+// One canonical form per page: no trailing slash (except the root), same as the sitemap.
+const canonical = new URL(Astro.url.pathname.replace(/(.)\/$/, '$1'), Astro.site);
+const ogImage = new URL(`/og/${og}.jpg`, Astro.site);
+const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 ---
 
 <!doctype html>
@@ -29,19 +53,36 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={canonical} />
+    {!noindex && <link rel="canonical" href={canonical} />}
+    {noindex && <meta name="robots" content="noindex" />}
     <meta name="theme-color" content={PALETTE_HEX.basalt} />
     <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={new URL('/posters/hero-1920.webp', Astro.site)} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={`${title ?? SITE.name}, over the obsidian monolith`} />
     <meta property="og:locale" content="en_AU" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    {structured.map((data) => (
+      <script
+        type="application/ld+json"
+        is:inline
+        set:html={JSON.stringify(data).replace(/</g, '\\u003c')}
+      />
+    ))}
 
     <link
       rel="preload"
@@ -79,7 +120,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
         }
       })();
     </script>
-    <ClientRouter fallback="none" />
+    <!-- Browsers without View Transitions get a plain cross-fade (styles/transitions.css). -->
+    <ClientRouter fallback="animate" />
   </head>
   <body>
     <Intro />
@@ -92,15 +134,40 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 
     <Nav />
 
-    <main id="main" tabindex="-1" class:list={['main', mainClass]}>
+    <main id="main" tabindex="-1" class:list={['main', mainClass]} data-scene-view={view}>
       <slot />
     </main>
 
     <Footer cta={footerCta} />
 
+    <Cursor />
+
+    <!--
+      Vercel Web Analytics and Speed Insights: cookieless, first-party scripts
+      (/_vercel/...), a page view per navigation. Custom events: lib/analytics.ts.
+    -->
+    <Analytics />
+    <SpeedInsights />
+
     <script>
       import { initSceneBoot } from '../lib/scene-boot';
+      import { initMorphs } from '../lib/morph';
+      import { initPageFocus } from '../lib/page-focus';
+      import { initCtaTracking, initIntroTracking } from '../lib/analytics';
       initSceneBoot();
+      initMorphs();
+      initPageFocus();
+      initCtaTracking();
+      initIntroTracking();
+
+      // The custom cursor: desktops with a fine pointer and motion allowed only.
+      // Touch screens and reduced motion never download it.
+      if (
+        matchMedia('(hover: hover) and (pointer: fine)').matches &&
+        !matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        import('../lib/cursor').then((m) => m.mountCursor());
+      }
 
       // Dev overlay for real-device testing. Only fetched when ?fps is in the URL.
       if (new URLSearchParams(location.search).has('fps')) {

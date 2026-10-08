@@ -7,6 +7,8 @@ import { SERVICES, PROCESS, FAQ } from '../lib/site';
 ---
 
 <BaseLayout
+  og="services"
+  view="services"
   footerCta={false}
   title="Services and pricing"
   description="Three website packages from Monolith Web Studio (Ember, Flow and Eruption) with starting prices, what’s included, the process and answers to common questions."
@@ -49,7 +51,7 @@ import { SERVICES, PROCESS, FAQ } from '../lib/site';
       </h2>
       <ol class="process">
         {PROCESS.map((step, index) => (
-          <li class="process__step" data-reveal>
+          <li class="process__step" data-reveal data-sheen>
             <span class="label process__num">0{index + 1}</span>
             <h3 class="subheading">{step.name}</h3>
             <p>{step.text}</p>

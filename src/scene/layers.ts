@@ -35,6 +35,7 @@ import { createCellsTexture } from './textures';
 import type { SharedUniforms } from './uniforms';
 import { BLOOM_INTENSITY, VIGNETTE_DARKNESS } from './look';
 import { WashEffect } from './wash';
+import { HeatEffect } from './heat';
 
 export type { EmbersModule } from './embers';
 export type { LavaModule } from './lava';
@@ -74,6 +75,10 @@ export interface PostChain {
   vignette: VignetteEffect;
   wash: WashEffect;
   grain: NoiseEffect;
+  /** Heat haze (High) and the page-change shimmer (High, Medium). */
+  heat: HeatEffect;
+  /** Whether this chain was built with the haze (High); Medium only shimmers. */
+  hazeCapable: boolean;
   /** Scale bloom, vignette and grain together while the layer fades in. */
   fade: number;
   /** The render target the scene is drawn into (for compiling its programs). */
@@ -110,8 +115,9 @@ function collectPostMaterials(composer: EffectComposer): Material[] {
 }
 
 /**
- * Bloom (selective by luminance on HDR buffers), vignette, ACES tone mapping,
- * the Chapter 04 wash and grain, merged into one effect pass (pmndrs/postprocessing).
+ * Heat (haze and the page-change shimmer, bending the UVs first), bloom
+ * (selective by luminance on HDR buffers), vignette, ACES tone mapping, the
+ * Chapter 04 wash and grain, merged into one effect pass (pmndrs/postprocessing).
  * High: 8 bloom levels and 4× MSAA. Medium ("light"): 5 levels at a lower
  * internal resolution, no MSAA.
  */
@@ -121,6 +127,7 @@ export function buildPost(
   camera: Camera,
   tier: TierSettings,
   halfFloat: boolean,
+  noise: Texture,
 ): PostChain {
   const composer = new EffectComposer(renderer, {
     frameBufferType: halfFloat ? HalfFloatType : UnsignedByteType,
@@ -140,7 +147,11 @@ export function buildPost(
   const toneMapping = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
   const wash = new WashEffect();
   const grain = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: false });
-  const effects = new EffectPass(camera, bloom, vignette, toneMapping, wash, grain);
+  // The haze is High's alone: Phase 2.5 measured no headroom on Medium for it.
+  const hazeCapable = tier.post === 'full';
+  const heat = new HeatEffect(noise, hazeCapable);
+  heat.mask = bloom.texture;
+  const effects = new EffectPass(camera, heat, bloom, vignette, toneMapping, wash, grain);
   if (!halfFloat) effects.dithering = true;
   composer.addPass(effects);
 
@@ -150,6 +161,8 @@ export function buildPost(
     vignette,
     wash,
     grain,
+    heat,
+    hazeCapable,
     fade: 1,
     inputBuffer: composer.inputBuffer,
     materials: () => collectPostMaterials(composer),

@@ -1,0 +1,152 @@
+/*
+ * Page transitions (Phase 4), on Astro's ClientRouter (View Transitions).
+ *
+ * The persistent scene stage is part of the root snapshot, so the incoming
+ * page's live canvas (already gliding to its new view, with a brief WebGL heat
+ * shimmer) shows through as the new page arrives:
+ *
+ *   1. The outgoing page cools: it darkens toward basalt and fades in about
+ *      250 ms, with a slight blur on fine-pointer screens (never on phones,
+ *      and never an SVG filter: one blurred snapshot is cheap, a filter on the
+ *      live page is not).
+ *   2. The incoming page warms in from 120 ms; its blocks then reveal as usual.
+ *   3. The nav pill never flickers: its new state replaces the old in place,
+ *      and only the current-page indicator slides.
+ *   4. Shared elements (work row title or cover → case study hero, next
+ *      project → the next hero) morph between pages.
+ *
+ * Nothing here delays the new page: the swap happens as soon as its HTML is
+ * in, and the camera catches up on its own.
+ *
+ * Answers for everyone else:
+ *   - Reduced motion: Astro sets every view-transition animation to none (an
+ *     instant swap); the morph names are removed too.
+ *   - Poster tier: a plain cross-fade, no blur, no morphs.
+ *   - Browsers without View Transitions: Astro's fallback runs the plain
+ *     cross-fade at the bottom of this file.
+ */
+
+@keyframes vt-cool-out {
+  to {
+    opacity: 0;
+    filter: brightness(0.35);
+  }
+}
+
+@keyframes vt-cool-out-blur {
+  to {
+    opacity: 0;
+    filter: brightness(0.35) blur(6px);
+  }
+}
+
+@keyframes vt-warm-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Whatever shows between the two snapshots is basalt, never the browser's white. */
+::view-transition {
+  background: var(--basalt);
+}
+
+::view-transition-old(root) {
+  animation: 250ms var(--ease-in-out) both vt-cool-out;
+  mix-blend-mode: normal;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  ::view-transition-old(root) {
+    animation-name: vt-cool-out-blur;
+  }
+}
+
+::view-transition-new(root) {
+  animation: 300ms var(--ease-out) 120ms both vt-warm-in;
+  mix-blend-mode: normal;
+}
+
+/* The nav pill: the new one lies over the old, in place, with no fade or
+   blending in between (the old stays up until the new page is captured). */
+.site-header {
+  view-transition-name: site-header;
+}
+
+::view-transition-group(site-header),
+::view-transition-old(site-header),
+::view-transition-new(site-header) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* The current-page indicator slides from the old item to the new one. */
+.nav__indicator {
+  view-transition-name: nav-indicator;
+}
+
+::view-transition-group(nav-indicator) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-out-expo);
+}
+
+/* Shared elements: names come from --vt (set per element, or on click). */
+.vt-morph {
+  view-transition-name: var(--vt, none);
+  view-transition-class: morph;
+}
+
+::view-transition-group(*.morph) {
+  animation-duration: 560ms;
+  animation-timing-function: var(--ease-out-expo);
+}
+
+::view-transition-old(*.morph),
+::view-transition-new(*.morph) {
+  /* Scale the snapshots to the group rather than cropping them. */
+  height: 100%;
+  object-fit: fill;
+}
+
+/* Poster tier: a simple cross-fade, nothing else. */
+html[data-tier='poster']::view-transition-old(root) {
+  animation: 220ms var(--ease-out) both vt-fade-out;
+}
+
+html[data-tier='poster']::view-transition-new(root) {
+  animation: 220ms var(--ease-out) both vt-warm-in;
+}
+
+html[data-tier='poster'] .vt-morph,
+html[data-tier='poster'] .nav__indicator {
+  view-transition-name: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vt-morph,
+  .nav__indicator,
+  .site-header {
+    view-transition-name: none;
+  }
+}
+
+/* No View Transitions: Astro's fallback animates the live page, plainly. */
+html[data-astro-transition-fallback='old'] body {
+  animation: 200ms var(--ease-out) both vt-fade-out;
+}
+
+html[data-astro-transition-fallback='new'] body {
+  animation: 240ms var(--ease-out) both vt-warm-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-astro-transition-fallback] body {
+    animation: none;
+  }
+}

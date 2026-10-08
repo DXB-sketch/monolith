@@ -1,20 +1,20 @@
 ---
 /**
- * Dev-only scene viewer, used by scripts/render-posters.mjs.
- * Only generated under `astro dev`; production builds emit no /dev pages.
+ * Dev-only scene viewer, used by scripts/render-posters.mjs and the cost and
+ * capture scripts. It lives outside src/pages: the `dev-routes` integration
+ * (astro.config.mjs) injects it as /dev/scene under `astro dev` only, so
+ * production builds contain neither the page nor its script.
  *
  *   /dev/scene?tier=high|medium|lite   live scene, no UI (every layer, fixed tier)
  *   /dev/scene?capture=12         frozen at t = 12s, drawing buffer preserved
  *   &progress=0.36                story progress (default story map), with capture
+ *   &view=work                    a page view (Phase 4) instead of the story
  *   &hide=lava,embers&nopost      isolate objects, skip post-processing
+ *   &nohaze                       no heat haze (High), to measure its cost
  *   &scale=0.5                    hold a resolution scale (default 1)
  * window.__gpu() returns per-layer GPU milliseconds (EXT_disjoint_timer_query_webgl2).
  */
-import '../../styles/global.css';
-
-export function getStaticPaths() {
-  return import.meta.env.DEV ? [{ params: { view: 'scene' } }] : [];
-}
+import '../styles/global.css';
 ---
 
 <!doctype html>
@@ -29,13 +29,16 @@ export function getStaticPaths() {
     <canvas data-dev-canvas></canvas>
     <div class="wash" data-dev-wash></div>
     <script>
-      import { createScene } from '../../scene/index';
+      import { createScene } from '../scene/index';
+      import { isPageView } from '../scene/views';
 
       const params = new URLSearchParams(location.search);
       const requested = params.get('tier');
       const tier = requested === 'medium' || requested === 'lite' ? requested : 'high';
       const captureAt = params.get('capture');
       const pointer = params.get('pointer')?.split(',').map(Number);
+      const view = params.get('view');
+      const pageView = isPageView(view) ? view : undefined;
       const canvas = document.querySelector<HTMLCanvasElement>('[data-dev-canvas]')!;
       const w = window as unknown as { __sceneReady?: boolean; __sceneError?: string };
 
@@ -54,8 +57,13 @@ export function getStaticPaths() {
         onPhase: (name, detail) => console.info('[scene]', name, detail ?? ''),
         debugHide: params.get('hide')?.split(','),
         debugNoPost: params.has('nopost'),
+        debugNoHaze: params.has('nohaze'),
         capture: captureAt
-          ? { time: Number(captureAt), progress: Number(params.get('progress') ?? 0) }
+          ? {
+              time: Number(captureAt),
+              progress: Number(params.get('progress') ?? 0),
+              view: pageView,
+            }
           : undefined,
         onFirstFrame: () => {
           // Give the frozen frame a few extra renders so pointer heat settles.
@@ -65,6 +73,7 @@ export function getStaticPaths() {
         .then((scene) => {
           (window as unknown as { __gpu?: unknown }).__gpu = () => scene.gpuTimings();
           if (pointer && pointer.length === 2) scene.setPointer(pointer[0]!, pointer[1]!);
+          if (pageView && !captureAt) scene.setView(pageView, { immediate: true });
           scene.resume();
         })
         .catch((error: unknown) => {
