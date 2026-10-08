@@ -197,13 +197,89 @@ CONTRAST_SECTION
 
 ## Transition timings
 
-DESIGN_TIMINGS
+**As designed** (from the moment the new page's HTML arrives, which is fetch-bound):
 
-MEASURED_TIMINGS
+| Part | Starts | Lasts | Ends |
+|---|---|---|---|
+| Stage dip | Click | Lifts 260 ms after the new page loads | — |
+| Outgoing page cools (fade and darken, blur on fine pointers) | Swap | 250 ms | 250 ms |
+| WebGL shimmer (High, Medium) | Swap | 120 ms up, 380 ms down | 500 ms |
+| Incoming page warms in | Swap + 120 ms | 300 ms | 420 ms |
+| Shared-element morphs | Swap | 560 ms | 560 ms |
+| Nav indicator slide | Swap | 420 ms | 420 ms |
+| Camera glide | New page loaded | 550–850 ms (by turn and distance) | ≤ 850 ms |
+| Poster tier cross-fade | Swap | 220 ms | 220 ms |
+| Reduced motion | — | Instant | — |
+
+Content is never held back: the new page is laid out and readable from the swap. The DOM transition is complete by 560 ms after it, and the camera by 850 ms in the worst case (a long move). Add the fetch (a cached static page on the CDN, typically tens of milliseconds), and every navigation is **within the 1.1 s ceiling**.
+
+**Measured in this container** (production build served locally). Each run is a scripted tour of 16 navigations:
+- home → work → case study → next case study
+- back, back, forward
+- → contact → services → about → lab → lab entry → home
+- back, forward
+- home at Face II → about → back
+
+"Shown" is click to swap (the new page is in the DOM); "done" is click to the end of the view transition.
+
+| Config | Shown (median / max) | Transition done (max) | Errors | Notes |
+|---|---|---|---|---|
+| Poster, 1440×900 | 210 / 385 ms | 877 ms | 0 | |
+| Poster, 390×844 | 98 / 180 ms | 505 ms | 0 | |
+| Reduced motion, 1440×900 | 238 / 380 ms | 563 ms | 0 | No animation: "done" is the swap plus scripts |
+| Reduced motion, 390×844 | 117 / 254 ms | 279 ms | 0 | |
+| Lite, 1440×900 | 401 / 1046 ms | 1746 ms | 0 | SwiftShader: Lite renders at ~5 fps here |
+| Lite, 390×844 | 135 / 306 ms | 1099 ms | 0 | |
+| Lite, 1440×900, keyboard only | 490 / 730 ms | 1795 ms | 0 | Every navigation by Tab and Enter |
+| High, 1440×900 | 1970 / 3196 ms | 7210 ms | 0 | SwiftShader: ~1 s per High frame |
+| High, 390×844 | 775 / 1685 ms | 2424 ms | 0 | |
+
+- **Where the time goes.** The poster tier shows the real cost of the page mechanics: 0.5–0.9 s from click to the end of the transition, including the fetch. On the rendering tiers here, every frame the compositor produces waits behind SwiftShader's software GPU. A High frame takes about a second (Phase 2.5 measured 933–1016 ms), so the view transition's own animation frames stretch accordingly.
+- **The scene never delays the new page.**
+  - Found and fixed during testing: High's "shown" was 3.1–4.7 s before scene rendering was paused during a page change, and 0.8–2.0 s (median) after.
+  - What remains is SwiftShader finishing the one frame already in flight. On real hardware that is a single 8–16 ms frame.
+- **Glides on SwiftShader also run long.** The scene clamps each frame step to 100 ms, so at 1–5 fps the glide's clock runs slower than wall time. On a real GPU the glides take their designed 550–850 ms.
+- **In every configuration:**
+  - focus landed on the new `h1` after every navigation
+  - the route announcer read the new title
+  - each page reached its view (or the story)
+  - nothing errored
+- **Back to the home story** restored the scroll position exactly (e.g. 2162 → 2162 at Face II) and the active chapter (`#face-ii`). On High, the camera returns to the page's own story position at once (see Lifecycle).
 
 ## GPU costs
 
-GPU_SECTION
+Measured with the Phase 2.5 timer queries (`EXT_disjoint_timer_query_webgl2`) on the dev viewer at 1280×720. Each view is at its page's resolution cap, against home's Chapter 00 at scale 1.
+
+These are SwiftShader GPU milliseconds per frame, so only the **ratios** mean anything. The per-layer split interleaves on SwiftShader; the frame totals are the reliable figure.
+
+| View | High (frame ms) | vs home | Medium | vs home | Lite | vs home |
+|---|---|---|---|---|---|---|
+| Home, Chapter 00 (scale 1) | 650 | — | 257 | — | 99 | — |
+| Work (0.75) | 472 | 73% | 152 | 59% | 58 | 59% |
+| Case study (0.7) | 501 | 77% | 109 | 42% | — | — |
+| Services (0.75) | 536 | 82% | 163 | 63% | 73 | 74% |
+| About (0.75) | 526 | 81% | 152 | 59% | — | — |
+| Lab (0.8) | 411 | 63% | 129 | 50% | — | — |
+| Contact (0.75) | 602 | 93% | 161 | 63% | 70 | 71% |
+| 404 (0.7) | 427 | 66% | 159 | 62% | — | — |
+
+- **Content pages cost less than home on every tier.**
+  - High and Medium render at 42–93% of a home frame.
+  - Lite only renders while the camera glides and layers fade in. It then holds its still frame and costs **nothing** (0 draw calls over 3 s, measured on the production build).
+- **Contact is the most expensive view on High,** because the close front face is mostly monolith pixels (342 ms of 602). Its scale cap could drop from 0.75 to 0.7 if real devices struggle there.
+
+**Heat haze (High), at 1280×720 and scale 1, Chapter 00:**
+
+| | Post slice (incl. heat) | Frame |
+|---|---|---|
+| Haze on | 53.4 ms | 650 ms |
+| Haze off (`&nohaze`) | 52.5 ms | 678 ms |
+
+The haze costs about **1 ms of SwiftShader GPU time (≈2% of the post slice)**. That is within the run-to-run noise of the frame total: the haze-off run happened to be slower overall.
+
+Most of its work sits behind a mask branch: one bloom-texture fetch everywhere, and a depth fetch plus two noise fetches only where the mask is hot. Medium compiles without the haze; its shimmer branch is skipped whenever the shimmer is zero.
+
+On a real High-tier GPU the haze is a fraction of a millisecond. If it ever pushes a frame over budget, the controller drops it before any resolution step.
 
 ## Lighthouse
 
