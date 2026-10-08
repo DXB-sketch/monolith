@@ -30,7 +30,7 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
   <ReadProgress />
   <header class="lab-hero">
     <div class="container lab-hero__inner">
-      <p class="label">
+      <p class="label lab-hero__eyebrow">
         <a href="/lab">Lab</a>
         <span aria-hidden="true"> / </span>
         <time datetime={entry.data.date.toISOString().slice(0, 10)}>
@@ -132,6 +132,15 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
 </script>
 
 <style>
+  /* A basalt backing, as the story's eyebrows have: rising embers can pass behind this small text. */
+  .lab-hero__eyebrow {
+    justify-self: start;
+    width: fit-content;
+    margin-left: -0.5em;
+    padding: 0.3em 0.5em;
+    background: rgb(var(--basalt-rgb) / 0.82);
+  }
+
   .lab-hero {
     position: relative;
     padding-block: calc(var(--nav-height) + var(--space-3xl)) var(--space-xl);

@@ -51,7 +51,7 @@ export const VIEW_STATES: Record<PageView, ChapterState> = {
   // Face I's side, from far off: that face holds a little heat.
   work: view([0.1, 0, 0, 0.6], 0.35, 0.85, 0.9, 0.7, 1180),
   // Close on an edge: mostly darkness, one thin vein.
-  case: view([0.25, 0.35, 0, 0], 0.25, 0.6, 0.7, 0.55, 1190),
+  case: view([0.25, 0.35, 0, 0], 0.12, 0.6, 0.7, 0.55, 1190),
   // From the channel: the lava leads, the stone stays calm.
   services: view([0.2, 0, 0, 0.25], 0.4, 1.2, 0.9, 0.8, 1200),
   // Distant, from the ridge: a small stone on the plain.
