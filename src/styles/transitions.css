@@ -52,6 +52,11 @@
   }
 }
 
+/* Whatever shows between the two snapshots is basalt, never the browser's white. */
+::view-transition {
+  background: var(--basalt);
+}
+
 ::view-transition-old(root) {
   animation: 250ms var(--ease-in-out) both vt-cool-out;
   mix-blend-mode: normal;
@@ -68,18 +73,17 @@
   mix-blend-mode: normal;
 }
 
-/* The nav pill: the new one simply replaces the old, in place. */
+/* The nav pill: the new one lies over the old, in place, with no fade or
+   blending in between (the old stays up until the new page is captured). */
 .site-header {
   view-transition-name: site-header;
 }
 
-::view-transition-old(site-header) {
-  display: none;
-}
-
-::view-transition-new(site-header),
-::view-transition-group(site-header) {
+::view-transition-group(site-header),
+::view-transition-old(site-header),
+::view-transition-new(site-header) {
   animation: none;
+  mix-blend-mode: normal;
 }
 
 /* The current-page indicator slides from the old item to the new one. */
