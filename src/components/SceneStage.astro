@@ -147,13 +147,16 @@
     position: absolute;
     inset: 0;
     opacity: 0;
-    background: linear-gradient(
-      90deg,
-      rgb(var(--basalt-rgb) / 0.86) 0%,
-      rgb(var(--basalt-rgb) / 0.8) 50%,
-      rgb(var(--basalt-rgb) / 0.5) 76%,
-      rgb(var(--basalt-rgb) / 0.15) 100%
-    );
+    background:
+      /* The top band too: hero eyebrows sit there, and High's embers rise into it. */
+      linear-gradient(180deg, rgb(var(--basalt-rgb) / 0.55) 0%, transparent 32%),
+      linear-gradient(
+        90deg,
+        rgb(var(--basalt-rgb) / 0.86) 0%,
+        rgb(var(--basalt-rgb) / 0.82) 60%,
+        rgb(var(--basalt-rgb) / 0.62) 80%,
+        rgb(var(--basalt-rgb) / 0.2) 100%
+      );
     transition: opacity var(--dur-slow) var(--ease-out);
   }
 
