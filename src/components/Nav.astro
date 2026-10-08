@@ -418,7 +418,8 @@ const current = (href: string) =>
       border: var(--hairline);
       border-top: var(--rule-accent);
       border-radius: var(--radius-panel);
-      background: rgb(var(--obsidian-rgb) / 0.96);
+      /* Opaque: at 0.96 the large headlines behind still showed through. */
+      background: var(--obsidian);
       -webkit-backdrop-filter: var(--frost-blur);
       backdrop-filter: var(--frost-blur);
       visibility: hidden;

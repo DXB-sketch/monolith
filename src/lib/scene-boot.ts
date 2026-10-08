@@ -558,11 +558,13 @@ let countTriggers: (() => number) | null = null;
 // ── Pages ─────────────────────────────────────────────────────────────────
 
 let navigatingTimer = 0;
+let resumeTimer = 0;
 
 /** Called on first load and after every ClientRouter navigation. */
 function onPage() {
   applyRootState();
   // The stone's dip during a page change lifts as the new page settles.
+  clearTimeout(resumeTimer);
   clearTimeout(navigatingTimer);
   navigatingTimer = window.setTimeout(() => stage()?.classList.remove('is-navigating'), 260);
   const declared = document.querySelector<HTMLElement>('main')?.dataset.sceneView;
@@ -633,6 +635,13 @@ export function initSceneBoot() {
     navigationType = (event as Event & { navigationType: typeof navigationType }).navigationType;
     clearTimeout(navigatingTimer);
     stage()?.classList.add('is-navigating');
+    // The new page never waits for the scene: rendering pauses (under the dip)
+    // while the page is fetched and swapped, so a heavy frame can't hold up the
+    // view transition's snapshot. onPage() resumes it; the timer is a safety
+    // net for a navigation that is abandoned before it swaps.
+    handle?.pause();
+    clearTimeout(resumeTimer);
+    resumeTimer = window.setTimeout(sync, 3000);
   });
   // Kill the home story's triggers and scroll listeners before the page is swapped.
   document.addEventListener('astro:before-swap', (event) => {
