@@ -67,7 +67,8 @@ const TIME_CONTROL = `(() => {
 const stepAnimations = (page: Page, ms: number) =>
   page.evaluate((ms) => {
     for (const animation of document.getAnimations()) {
-      if (animation.playState === 'finished') continue;
+      // Scroll-driven animations (the reading progress) follow the scroll, not time.
+      if (animation.timeline !== document.timeline || animation.playState === 'finished') continue;
       animation.pause();
       animation.currentTime = Number(animation.currentTime ?? 0) + ms;
     }
