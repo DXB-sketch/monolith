@@ -193,7 +193,53 @@ Orbit frames are `orbit(θ, radius, height, targetHeight, lateral, fov)`, as in 
 
 Minimums: 6 m from the stone, 0.9 m above ground, and no step more than 1.5× its neighbours (a jump). The story path's own check is unchanged.
 
-CONTRAST_SECTION
+## Contrast over every page view
+
+**Method.**
+- Each page is loaded on the production build with the scene live at its tier (forced with `?tier=`, `keeptier`), and scrolled through in steps of 80% of the viewport.
+- At each step every visible text box in `<main>` is recorded. All text (and its decoration, with transitions off) is then made transparent and the background is captured.
+- The background luminance is the **99th percentile of the pixels behind each box**, against the text's own colour: a strict variant of Phase 2's band method.
+- Not counted: text covered by the fixed nav pill or the 1 px reading-progress line, and covered or hidden text.
+- Thresholds: 4.5:1 for normal text, 3:1 for large text (≥ 24 px, or ≥ 18.66 px bold).
+
+**Results:** the worst small and large text on each page and tier.
+
+| Page | High 1440 | High 390 | Lite 1440 | Lite 390 | Poster 1440 | Poster 390 |
+|---|---|---|---|---|---|---|
+| Work | 6.13 / 6.33 | 4.99 / 3.74 | 6.37 / 6.33 | 5.29 / 3.95 | 6.37 / 5.44 | 4.92 / 4.70 |
+| Case study | 6.37 / 6.39 | 6.37 / 6.39 | 6.37 / 6.41 | 6.37 / 6.37 | 6.30 / 5.10 | 6.03 / 3.44 |
+| Services | 5.91 / 6.16 | 6.00 / 5.22 | 6.00 / 6.21 | 6.01 / 5.42 | 6.05 / 5.11 | 6.06 / 3.21 |
+| About | 6.37 / 5.85 | 6.37 / 5.05 | 6.37 / 5.85 | 6.37 / 5.43 | 6.37 / 5.03 | 5.22 / 4.03 |
+| Lab | 6.37 / 6.41 | 6.37 / 4.18 | 6.37 / 6.41 | 6.37 / 6.41 | 6.37 / 5.01 | 6.37 / 4.09 |
+| Lab entry | 6.31 / 6.37 | 6.37 / 6.40 | 6.37 / 6.37 | 6.37 / 6.41 | 6.37 / 5.46 | 5.51 / 4.69 |
+| Contact | 6.07 / 4.91 | 6.07 / 3.97 | 6.07 / 4.91 | 6.07 / 3.98 | 6.07 / 5.31 | 6.07 / 4.37 |
+| Contact thanks | 6.33 / 4.95 | 5.98 / 3.97 | 6.33 / 4.95 | 5.94 / 3.98 | 6.33 / 5.25 | 6.35 / 4.37 |
+| 404 | 6.37 / 6.06 | 6.37 / 5.75 | 6.37 / 6.01 | 6.37 / 5.69 | 6.37 / 5.16 | 5.00 / 3.82 |
+
+Each cell is the worst small text / the worst large text, as a ratio to 1.
+
+**Every page passes WCAG AA on every tier at both sizes.**
+- **Large-text minimums:** these are always the lava accent phrases, such as "fits?" at 3.21:1 and "built like this?" at 3.44:1, on the poster at 390 where the hero poster is brightest. They are large display text, so 3:1 applies.
+- **Small-text minimums:** 4.66–4.99:1, small labels over the portrait poster and the Work view's horizon.
+- **"Start a project" (6.37:1)** is basalt text on its own lava button, not over the scene.
+- **The case study and lab entry rows** come from the final build's re-measure, after their eyebrows gained a backing; the rest are from the full sweep just before.
+
+**What the sweeps found, and what changed.**
+1. **Lab entry, 1440, Lite and High:** its centred prose (to about 76% of the width) ran over the lit right face: **2.58:1**, then 3.95–4.22:1 after a first fix.
+
+   The fix, in three passes:
+   - the Lab view moved the stone further right (lateral −5 → −7.2)
+   - the landscape scrim now holds 0.82 to 60% of the width and 0.62 at 80% (it was 0.78 at 38% and 0.35 at 68%), and darkens the top band too
+   - the Lab view is calmer (embers 0.9 → 0.75, fissure gain 1.0 → 0.85).
+
+   The worst is now 6.09–6.37:1.
+2. **High, small hero eyebrows:** near-camera embers bloom into large sparks. The case study and lab entry eyebrows now have the same 82% basalt backing the story's eyebrows have had since Phase 2, and the case view has fewer embers (0.25 → 0.12).
+3. **Measurement artefacts found and excluded:**
+   - text scrolled partly under the nav pill (sampling the lava CTA)
+   - text under the new 1 px progress hairline
+   - a link underline whose colour transition hadn't finished when the screenshot was taken at High's ~1 fps
+
+**Shortcomings of the method.** It samples one moment per scroll step. Embers and the 404 drift move, so a rare spark can pass behind text. The eyebrow backings cover the smallest text where that matters.
 
 ## Transition timings
 
@@ -283,7 +329,29 @@ On a real High-tier GPU the haze is a fraction of a millisecond. If it ever push
 
 ## Lighthouse
 
-LIGHTHOUSE_SECTION
+Mobile (Moto G Power emulation, 4× CPU, slow 4G), on the production build served locally, **six runs each**.
+
+This container's software GPU puts Lighthouse's device on the poster tier, as in every phase since 2.5.
+
+| Page | Performance (6 runs) | Median | Accessibility | Best practices | SEO | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|---|---|---|---|
+| Home | 98 99 99 99 99 98 | **99** | 100 | 100 | 100 | 1.5–1.7 s | 1.8–2.3 s | 10–50 ms | 0 |
+| Case study (SEQDVGC) | 97 97 98 98 98 97 | **97.5** | 100 | 100 | 100 | 1.7 s | 2.3 s | 0–50 ms | 0 |
+| Contact | 98 97 97 98 98 97 | **97.5** | 100 | 100 | 100 | 1.7–2.0 s | 2.3 s | 0–90 ms | 0 |
+
+**Against Phase 3** (three runs each):
+
+| Page | Phase 3 | Phase 4 |
+|---|---|---|
+| Home | 98–99, LCP 1.7–2.1 s | 98–99, LCP 1.8–2.3 s |
+| Case study | 98, LCP 2.3 s | 97–98 (median 97.5), LCP 2.3 s |
+| Contact | 98, LCP 2.1 s, CLS 0.022 | 97–98 (median 97.5), LCP 2.3 s, CLS **0** |
+
+- **The scores are within a point.** Home is unchanged; the case study and Contact medians are half a point lower.
+- **Contact's LCP is 0.2 s later.** The page's render-blocking CSS grew from 5.6 to 7.2 KB gz (transitions, hover language, cursor and sound styles). In Lighthouse's model that is only about 10 ms, so most of the 0.2 s is run-to-run variance in FCP (1.7–2.0 s across runs).
+- **The case study's LCP element is now the hero cover image** (eager, `fetchpriority="high"`, AVIF). Its LCP is unchanged at 2.3 s.
+- **Contact's layout shift went from 0.022 to 0.** The step counter and the new step track are now laid out from first paint (JS-only via `html.js`), instead of being revealed by the script.
+- **Initial JS is still far under budget:** 13.2 KB gz on content pages and 15.4 KB on Contact (budget 100 KB).
 
 ## Lifecycle: 20 navigations
 
@@ -328,8 +396,47 @@ The camera was in place 16 ms after the story remounted, with nothing replayed.
 
 ## Known issues
 
-KNOWN_ISSUES
+- **No real GPU here.**
+  - Every frame rate, glide duration and High/Lite transition timing above comes from SwiftShader.
+  - Real-device checks still to do:
+    - the feel of the glides (550–850 ms by design)
+    - the shimmer and the haze in motion
+    - that content pages hold their frame rate under their scale caps
+    - that a page change never visibly hitches on a mid-range phone
+- **Haze on Medium** stays off until real-device numbers show headroom (`?tier=medium&fps` on an Iris Xe laptop or a recent Android flagship). The effect is already built; enabling it is a define plus the controller's existing drop-first rule.
+- **Morphs need the matching thumbnail or preview to be visible.**
+  - Desktop mouse: the floating preview morphs into the hero cover.
+  - Keyboard and touch: the inline thumbnail does.
+  - If neither is showing when the link is followed, only the title morphs and the hero cover simply fades in.
+- **Back from a case study to the work index:** the title morphs back into its row. The cover morphs back only where thumbnails are visible (touch); on desktop the hero cover fades out.
+- **Home has no shared-element morph into case studies.** Its project cards sit inside the scroll story, where a morph would fight the camera. The page transition still applies.
+- **Leaving the home story mid-dive cuts to the Core's orbit frame** before the glide, hidden under the navigation dip. That avoids gliding out of the vein at 0.4 m from the stone.
+- **Ambient sound after a reload.** With sound remembered on, it starts at the first click or key press anywhere, not just on the toggle. That is a user gesture, as browsers require, and the toggle shows the state, but a visitor who forgot they turned it on will hear it fade in on their next click.
+- **Sound in Safari.** Web Audio needs a user gesture, which the toggle and the "first gesture" path provide. iOS's silent switch mutes Web Audio by design.
+- **Firefox:** View Transitions are supported in recent versions. Older versions get the plain cross-fade fallback (now working; before Phase 4 they did full page loads). Firefox wasn't tested here (only Chromium is installed).
+- **The reading-progress hairline** relies on CSS scroll-driven animations (Chromium and recent Safari). Elsewhere it's simply absent.
+- **Placeholder content is unchanged from Phase 3** (40 bracketed placeholders reported at build).
 
 ## What Phase 5 needs to know before launch
 
-PHASE5_NOTES
+- **Measure on real devices first,** with `?fps` (and `?tier=…&fps&debug&keeptier` to pin a tier). The overlay now also shows each content page's view, its scale cap, and `held` when Lite is holding its still frame.
+  - Check that content pages stay at 60 fps (High, Medium) or hold (Lite).
+  - Check that the haze never forces a resolution step on High. If it does, the overlay's decisions list "haze off" first.
+  - If Contact's view is heavy on a device, lower its cap in `VIEW_SCALE_CAP` (0.75 → 0.7).
+- **Deploy and the first visit.**
+  - Content pages now load the scene on a first visit, after first paint and through the same deferred path as home. That adds the scene chunk (155 KB gz) and, on Medium and Lite, the fissure atlas (133 KB) to a cold visit of any page, after `load`.
+  - Lighthouse doesn't see this (its device gets the poster).
+  - On real 4G, check that nothing above the fold waits for it. If needed, gate content pages' scene behind `requestIdleCallback`, or after the first interaction.
+- **Caching (security headers and the like are out of scope here, but caching matters for transitions).**
+  - ClientRouter fetches each page's HTML on navigation, so fast HTML responses make the transitions feel instant.
+  - `/contact` is rendered on demand (Phase 3), so its function's cold start shows up as a slower page change into Contact. Consider prefetching it (`data-astro-prefetch` on "Start a project" links) once the function is warm, or keeping it warm.
+- **SEO and analytics:**
+  - Every page still has a unique title and description.
+  - A route-change event for analytics can hook `astro:page-load`, where `lib/page-focus.ts` already runs.
+  - The route announcer is ClientRouter's own.
+- **Real Resend and Cal.com credentials** are still needed (see PHASE_3_COMPLETE.md). The contact success flare fires when the success panel appears. Because spam checks reject silently with a success response, a rejected bot would also get it, harmlessly.
+- **Testing tools added in this phase** are in the scratch tooling, not the repo. The repo carries:
+  - `npm run check:camera`, which now covers views and glides
+  - `/dev/scene?view=…&nohaze`, for visual and cost checks
+
+  The contrast, navigation-matrix and leak scripts were run ad hoc against the production build; the method and results are recorded above so they can be repeated.

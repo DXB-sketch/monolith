@@ -82,11 +82,14 @@ const FORM_ERRORS = {
       </ul>
     </div>
 
-    <p class="brief__progress label" aria-live="polite" data-brief-progress hidden></p>
+    {/* JS only (the multi-step form); shown from first paint so nothing shifts when the script starts. */}
+    <p class="brief__progress label" aria-live="polite" data-brief-progress>
+      Step 1 of {STEPS.length}
+    </p>
     {/* Decorative: each completed step leaves a thin lava line (the text above says it in words). */}
-    <ol class="brief__track" aria-hidden="true" data-brief-track hidden>
-      {STEPS.map(() => (
-        <li />
+    <ol class="brief__track" aria-hidden="true" data-brief-track>
+      {STEPS.map((_, i) => (
+        <li class={i === 0 ? 'is-current' : undefined} />
       ))}
     </ol>
 
@@ -293,7 +296,9 @@ const FORM_ERRORS = {
   }
 
   .brief__progress[hidden],
-  .brief__track[hidden] {
+  .brief__track[hidden],
+  :global(html:not(.js)) .brief__progress,
+  :global(html:not(.js)) .brief__track {
     display: none;
   }
 
@@ -312,10 +317,12 @@ const FORM_ERRORS = {
     transition: background-color var(--dur-slow) var(--ease-out);
   }
 
+  .brief__track li.is-current,
   .brief__track li:global(.is-current) {
     background: rgb(var(--bone-rgb) / 0.5);
   }
 
+  .brief__track li.is-done,
   .brief__track li:global(.is-done) {
     background: var(--lava);
   }
