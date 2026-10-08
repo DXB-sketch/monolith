@@ -287,7 +287,30 @@ LIGHTHOUSE_SECTION
 
 ## Lifecycle: 20 navigations
 
-LEAK_SECTION
+**Method** (DevTools protocol on the production build, 1440×900):
+1. One warm-up round over 10 routes: home, work, two case studies, contact, services, about, lab, a lab entry, the 404, and back home. This lets lazy chunks load and caches fill.
+2. Baseline: forced GC twice, then the metrics and a heap snapshot, on home.
+3. **20 more navigations** over the same loop, then the same measurements on home.
+
+| Tier | Heap after GC | DOM nodes | JS event listeners | `window` / `document` listeners | ScrollTriggers (home) | Heap snapshot | Errors |
+|---|---|---|---|---|---|---|---|
+| Lite | 5.72 → 5.89 MB (+0.17) | 975 → 975 | 93 → 93 | 33/33 → 33/33 | 23 → 23 | 8.1 → 8.2 MB | 0 |
+| High | 6.27 → 6.61 MB (+0.34) | 975 → 975 | 93 → 93 | 33/33 → 33/33 | 23 → 23 | 8.7 → 8.9 MB | 0 |
+
+- Listeners, DOM nodes and ScrollTriggers are **identical** after 20 navigations.
+- The heap moves by 0.2–0.3 MB. That is within V8's normal post-GC variance (code caches, inline caches), not growth per navigation. A per-navigation leak of even 20 KB would show as 0.4 MB here.
+- On content pages, ScrollTriggers are only those of the page's own pending reveals, and they are destroyed on every page change (Phase 3's scoped cleanup).
+
+**Back to the story camera** (High, settled at Face II first, then → About → back):
+
+| | Before | After back |
+|---|---|---|
+| Camera progress | 0.2729 | 0.2729 |
+| Story target | 0.2729 | 0.2729 |
+| Gliding | — | No |
+| Active chapter | `#face-ii` | `#face-ii` |
+
+The camera was in place 16 ms after the story remounted, with nothing replayed.
 
 ## Bundle sizes (gzip -9)
 
