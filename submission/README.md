@@ -27,16 +27,16 @@ pixels):
 
 | File                     | What it shows                                             |
 | ------------------------ | --------------------------------------------------------- |
-| `…-home-00-arrival.png`  | Home, Chapter 00: the monolith at dusk, the hero headline |
-| `…-home-01-face-i.png`   | Home, Chapter 01: the first project face (SEQDVGC)        |
-| `…-home-02-face-ii.png`  | Home, Chapter 02: the second project face (Allen Gillon)  |
-| `…-home-03-the-lab.png`  | Home, Chapter 03: the Lab and the concept project         |
-| `…-home-04-the-core.png` | Home, Chapter 04: the core and the services summary       |
-| `…-home-05-the-dive.png` | Home: the dive into the core fissure                      |
-| `…-work.png`             | The Work index                                            |
-| `…-case-study.png`       | A case study (SEQDVGC)                                    |
-| `…-services.png`         | Services and pricing                                      |
-| `…-contact.png`          | Contact: the project brief form and booking               |
+| `…-home-00-arrival.jpg`  | Home, Chapter 00: the monolith at dusk, the hero headline |
+| `…-home-01-face-i.jpg`   | Home, Chapter 01: the first project face (SEQDVGC)        |
+| `…-home-02-face-ii.jpg`  | Home, Chapter 02: the second project face (Allen Gillon)  |
+| `…-home-03-the-lab.jpg`  | Home, Chapter 03: the Lab and the concept project         |
+| `…-home-04-the-core.jpg` | Home, Chapter 04: the core and the services summary       |
+| `…-home-05-the-dive.jpg` | Home: the dive into the core fissure                      |
+| `…-work.jpg`             | The Work index                                            |
+| `…-case-study.jpg`       | A case study (SEQDVGC)                                    |
+| `…-services.jpg`         | Services and pricing                                      |
+| `…-contact.jpg`          | Contact: the project brief form and booking               |
 
 ## Recording
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env -S npx tsx
 /**
- * Award-submission assets (Phase 5), rendered deterministically: the page's
- * clock is Playwright's fake clock (requestAnimationFrame, performance.now,
- * timers: the scene, GSAP, Lenis and the story all run on it), and CSS and
- * view-transition animations are paused and stepped by hand. Every frame
- * advances exactly 1/60 s, however long the software renderer takes to draw
- * it, so the output is smooth and repeatable without a GPU.
+ * Award-submission assets (Phase 5), rendered deterministically: once a page
+ * has loaded, its clock (performance.now, Date.now and the requestAnimationFrame
+ * timestamp: the scene, GSAP, Lenis and the story all run on it) is frozen and
+ * moved on exactly 1/60 s per frame, and CSS and view-transition animations
+ * are paused and stepped by hand. However long the software renderer takes to
+ * draw a frame, the output is smooth and repeatable without a GPU.
  *
  *   screenshots   High tier: Home (each chapter and the dive), Work, a case
  *                 study, Services, Contact at 1600×1200 and 2560×1440; phone
@@ -38,6 +38,31 @@ const browser: Browser = await chromium.launch({
 
 // ── Deterministic time ────────────────────────────────────────────────────
 
+/**
+ * The page's clock, controlled from here. Time runs normally while a page
+ * loads (fetching, shader compiles, layer fades), then `freeze()` stops it:
+ * from there on performance.now, Date.now and requestAnimationFrame's
+ * timestamp move only when `advance()` is called. The real
+ * requestAnimationFrame keeps firing, so the page still paints (and
+ * screenshots stay fast); every callback just sees the frozen time.
+ */
+// Plain JavaScript source (not a function): the TypeScript loader's helpers
+// don't exist in the page.
+const TIME_CONTROL = `(() => {
+  const realNow = performance.now.bind(performance);
+  const realRaf = window.requestAnimationFrame.bind(window);
+  const dateBase = Date.now() - realNow();
+  let frozen = null;
+  const now = () => (frozen === null ? realNow() : frozen);
+  performance.now = now;
+  Date.now = () => Math.round(dateBase + now());
+  window.requestAnimationFrame = (callback) => realRaf(() => callback(now()));
+  window.__freeze = () => { frozen = realNow(); };
+  window.__advance = (ms) => { if (frozen !== null) frozen += ms; };
+  // Resolves after two real frames: everything scheduled for this time has drawn.
+  window.__painted = () => new Promise((resolve) => realRaf(() => realRaf(() => resolve())));
+})();`;
+
 /** Pause every CSS animation, transition and view-transition animation, and move each on by `ms`. */
 const stepAnimations = (page: Page, ms: number) =>
   page.evaluate((ms) => {
@@ -48,26 +73,24 @@ const stepAnimations = (page: Page, ms: number) =>
     }
   }, ms);
 
-/** One frame: CSS animations and the page clock both advance 1/60 s. */
+type Controlled = Window & {
+  __freeze(): void;
+  __advance(ms: number): void;
+  __painted(): Promise<void>;
+};
+
+/** One frame: CSS animations and the page clock both advance 1/60 s, and it's drawn. */
 async function frame(page: Page) {
   await stepAnimations(page, FRAME);
-  await page.clock.runFor(FRAME);
+  await page.evaluate(async (ms) => {
+    const w = window as unknown as Controlled;
+    w.__advance(ms);
+    await w.__painted();
+  }, FRAME);
 }
 
 async function frames(page: Page, count: number) {
   for (let i = 0; i < count; i++) await frame(page);
-}
-
-/**
- * Real-world work (fetching, compiling shaders) isn't on the fake clock: give
- * it real time while the clock ticks along, until `ready` holds.
- */
-async function settle(page: Page, ready: () => boolean | Promise<boolean>, maxMs = 120_000) {
-  const start = Date.now();
-  while (!(await ready()) && Date.now() - start < maxMs) {
-    await page.clock.runFor(100);
-    await page.waitForTimeout(100);
-  }
 }
 
 async function open(viewport: { width: number; height: number }, scale = 1, mobile = false) {
@@ -79,20 +102,22 @@ async function open(viewport: { width: number; height: number }, scale = 1, mobi
   });
   // The first-visit intro is part of the experience, not of a still.
   await context.addInitScript(() => sessionStorage.setItem('monolith:intro', '1'));
-  const page = await context.newPage();
-  await page.clock.install({ time: new Date('2026-10-01T18:00:00+10:00') });
-  return page;
+  await context.addInitScript(TIME_CONTROL);
+  return context.newPage();
 }
 
-const live = (page: Page) => () =>
-  page.evaluate(() => Boolean(document.querySelector('[data-scene-stage].is-live')));
-
-/** Load a page on a forced tier and wait until its scene is fully up (all layers faded in). */
+/**
+ * Load a page on a forced tier at full resolution (`scale=1` holds the dynamic
+ * resolution, which a software renderer would otherwise lower), wait in real
+ * time for its scene and every layer, then freeze the clock.
+ */
 async function load(page: Page, path: string, tier: 'high' | 'lite') {
-  await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}tier=${tier}`);
+  await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}tier=${tier}&scale=1`);
   await page.waitForLoadState('networkidle');
-  await settle(page, live(page));
-  await frames(page, 240); // layer fades, reveals and the camera's first glide
+  await page.waitForSelector('[data-scene-stage].is-live', { timeout: 120_000 });
+  await page.waitForTimeout(12_000); // progressive layers, fades, reveals, the first glide
+  await page.evaluate(() => (window as unknown as Controlled).__freeze());
+  await frames(page, 30);
 }
 
 /** Scroll the home story to a chapter the way its own links do (Lenis, eased), then let it settle. */
@@ -123,8 +148,16 @@ async function screenshots() {
   for (const size of sizes) {
     const page = await open(size.viewport, size.scale ?? 1, size.mobile);
     const shot = async (name: string) => {
-      await page.screenshot({ path: join(dir, `${size.name}-${name}.png`) });
-      console.log(`screenshots/${size.name}-${name}.png`);
+      // The chapter links focus their heading (right for keyboard users); a still
+      // shouldn't show the focus ring.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await frame(page);
+      await page.screenshot({
+        path: join(dir, `${size.name}-${name}.jpg`),
+        type: 'jpeg',
+        quality: 93,
+      });
+      console.log(`screenshots/${size.name}-${name}.jpg`);
     };
 
     await load(page, '/', size.tier);
@@ -196,9 +229,8 @@ async function recording() {
   await hold(1.2);
 
   // Into the SEQDVGC case study through its card: the page transition.
-  await page.evaluate(() =>
-    document.querySelector<HTMLAnchorElement>('#face-i a[href="/work/seqdvgc"]')?.click(),
-  );
+  // A real mouse click, as a visitor would (no keyboard focus ring follows it).
+  await page.locator('#face-i a[href="/work/seqdvgc"]').click();
   await hold(3);
   await scrollToY((await page.evaluate(() => innerHeight)) * 1.2, 3);
   await hold(1);
