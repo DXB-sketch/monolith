@@ -25,6 +25,9 @@ Desktop, High tier, at 1600×1200 and 2560×1440 (`1600x1200-…`, `2560x1440-�
 and phone, Lite tier, 390×844 at 3× pixel density (`phone-390x844-…`, 1170×2532
 pixels):
 
+(Lite renders the scene at a reduced resolution by design, which shows at 3×;
+for a phone shot with the full scene, use a High-tier device.)
+
 | File                     | What it shows                                             |
 | ------------------------ | --------------------------------------------------------- |
 | `…-home-00-arrival.jpg`  | Home, Chapter 00: the monolith at dusk, the hero headline |
