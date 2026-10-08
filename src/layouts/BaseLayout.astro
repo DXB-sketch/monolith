@@ -6,6 +6,8 @@ import Footer from '../components/Footer.astro';
 import SceneStage from '../components/SceneStage.astro';
 import Intro from '../components/Intro.astro';
 import Cursor from '../components/Cursor.astro';
+import Analytics from '@vercel/analytics/astro';
+import SpeedInsights from '@vercel/speed-insights/astro';
 import { SITE } from '../lib/site';
 import { PALETTE_HEX } from '../scene/palette';
 import type { PageView } from '../scene/views';
@@ -140,13 +142,23 @@ const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
     <Cursor />
 
+    <!--
+      Vercel Web Analytics and Speed Insights: cookieless, first-party scripts
+      (/_vercel/...), a page view per navigation. Custom events: lib/analytics.ts.
+    -->
+    <Analytics />
+    <SpeedInsights />
+
     <script>
       import { initSceneBoot } from '../lib/scene-boot';
       import { initMorphs } from '../lib/morph';
       import { initPageFocus } from '../lib/page-focus';
+      import { initCtaTracking, initIntroTracking } from '../lib/analytics';
       initSceneBoot();
       initMorphs();
       initPageFocus();
+      initCtaTracking();
+      initIntroTracking();
 
       // The custom cursor: desktops with a fine pointer and motion allowed only.
       // Touch screens and reduced motion never download it.

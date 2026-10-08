@@ -1,0 +1,97 @@
+---
+/**
+ * Privacy (Phase 5). Plain English, and only what the site actually does. Flagged
+ * for the owner to review before launch: the flag is a bracketed placeholder,
+ * so the placeholder gate keeps production builds from shipping until it's
+ * removed. No certifications or legal compliance are claimed.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageIntro from '../components/PageIntro.astro';
+import { SITE } from '../lib/site';
+---
+
+<BaseLayout
+  og="privacy"
+  view="about"
+  title="Privacy"
+  description="How the Monolith Web Studio website handles your details: the contact form, cookieless analytics, booking calls and how to ask for your details to be deleted."
+>
+  <PageIntro
+    eyebrow="Privacy"
+    title="Your details,"
+    accent="in plain English."
+    lead="What this site collects, where it goes, and how to ask me to delete it."
+  />
+
+  <section class="privacy" aria-label="Privacy details">
+    <div class="container privacy__inner" data-reveal>
+      <p class="privacy__review label">[REVIEW BEFORE LAUNCH]</p>
+
+      <h2 class="heading">The contact form</h2>
+      <p>
+        When you send a project brief, what you enter (your name, email, business, phone if you give
+        it, your answers and your message) is sent to me by email through Resend, an email delivery
+        service. It ends up in my inbox and is used to reply to you about your project.
+      </p>
+      <p>
+        While you fill the form in, your answers are kept in your browser’s session storage so a
+        refresh doesn’t lose them. They are cleared when the brief is sent, or when you close the
+        tab. If you send the form without JavaScript and something needs fixing, your answers are
+        held in a cookie for up to two minutes so the form can show them again.
+      </p>
+      <p>
+        To stop spam, the internet address your request comes from is checked against recent
+        submissions. It is kept only in the server’s working memory, never written to storage, and
+        isn’t included in the email.
+      </p>
+
+      <h2 class="heading">Analytics and performance</h2>
+      <p>
+        The site uses Vercel Web Analytics and Speed Insights, which don’t use cookies. They record
+        things like which pages are visited, the referring site, the country, the kind of device and
+        browser, and how quickly pages load. On top of that, the site sends a few anonymous events:
+        which version of the 3D scene your device could show, how far through the home page story
+        you scrolled, which “Start a project” or “Book a call” button you used, how far through the
+        contact form you got and whether it was sent, and whether you turned the sound on or skipped
+        the intro. None of these include anything you type.
+      </p>
+
+      <h2 class="heading">Booking a call</h2>
+      <p>
+        Booking a call is handled by Cal.com. Nothing from Cal.com loads until you choose “Book a
+        call”, and what you enter there is covered by Cal.com’s own privacy policy.
+      </p>
+
+      <h2 class="heading">Hosting</h2>
+      <p>The site is hosted by Vercel, whose servers handle every request, as any web host’s do.</p>
+
+      <h2 class="heading">Your details, your call</h2>
+      <p>To ask what I hold about you, or to have it deleted, email me at {SITE.email}.</p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .privacy {
+    position: relative;
+    padding-block: var(--space-l) var(--space-2xl);
+  }
+
+  .privacy__inner {
+    display: grid;
+    gap: var(--space-m);
+    max-width: var(--measure);
+  }
+
+  .privacy__inner p {
+    color: var(--ash-soft);
+  }
+
+  .privacy__inner .heading {
+    margin-top: var(--space-l);
+  }
+
+  .privacy__inner .privacy__review {
+    color: var(--lava-hot);
+  }
+</style>

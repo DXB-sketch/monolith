@@ -20,6 +20,7 @@ import { blendChapterState, CHAPTER_STATES, createChapterState } from '../scene/
 import { DEFAULT_STORY_MAP, storyPosition, type StoryMap } from '../scene/story-map';
 import { mountReveals, type RevealController } from './reveal';
 import { prefersReducedMotion } from '../scene/quality';
+import { onLeave, track } from './analytics';
 
 export { triggerCount } from './reveal';
 import {
@@ -127,6 +128,15 @@ export async function mountStory(
   let storyRange = 1;
   let shownTemp = 0;
   let activeIndex = 0;
+  /** The furthest chapter reached, and whether the dive began (analytics: story_progress). */
+  let furthest = 0;
+  let dived = false;
+  const reportProgress = onLeave(() =>
+    track('story_progress', {
+      chapter: dived ? 'the-dive' : CHAPTER_IDS[furthest]!,
+      index: dived ? CHAPTER_IDS.length : furthest,
+    }),
+  );
   const position = { chapter: 0, dive: 0 };
   const chapterState = createChapterState();
 
@@ -175,11 +185,13 @@ export async function mountStory(
     setWashed(position.dive);
     const nowDiving = position.dive > 0.02;
     if (nowDiving && !diving && cuesReady) cue('dive');
+    if (nowDiving) dived = true;
     diving = nowDiving;
   };
 
   const setActive = (index: number) => {
     if (index !== activeIndex && cuesReady) cue('chapter', index);
+    furthest = Math.max(furthest, index);
     activeIndex = index;
     links.forEach((link, i) => {
       const active = i === index;
@@ -371,6 +383,8 @@ export async function mountStory(
     requestRefresh,
     unmount() {
       disposed = true;
+      // Leaving home by a link (no page hide with the ClientRouter): send it now.
+      reportProgress();
       clearTimeout(refreshTimer);
       clearTimeout(tickTimer);
       clearTimeout(cueTimer);

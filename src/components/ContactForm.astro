@@ -127,6 +127,10 @@ const FORM_ERRORS = {
 
         {step.id === 'details' && (
           <div class="brief__fields">
+            <p class="brief__privacy">
+              These details come to me by email so I can reply.{' '}
+              <a href="/privacy">How the site handles your details</a>.
+            </p>
             <div class="field">
               <label for="field-name">Name</label>
               <p class="brief__error" id={describe('name')} hidden={!errors.name}>
@@ -401,6 +405,11 @@ const FORM_ERRORS = {
     display: grid;
     gap: var(--space-m);
     clear: both;
+  }
+
+  .brief__privacy {
+    font-size: var(--step--1);
+    color: var(--ash);
   }
 
   .field {

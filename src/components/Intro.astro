@@ -47,7 +47,7 @@
       if (opened) return;
       opened = true;
       inputs.forEach(function (type) {
-        window.removeEventListener(type, open, true);
+        window.removeEventListener(type, skip, true);
       });
       // Too close to (or past) the automatic split: let that one run.
       if (elapsed() < MAX - 60) {
@@ -57,11 +57,19 @@
         setTimeout(cleanup, Math.max(0, MAX + SPLIT - elapsed()));
       }
     }
+    // An input before the automatic split: noted for analytics (lib/analytics.ts).
+    function skip() {
+      if (!opened && elapsed() < MAX - 60) {
+        root.dataset.introSkipped = '';
+        document.dispatchEvent(new CustomEvent('monolith:intro-skipped'));
+      }
+      open();
+    }
     function ready() {
       setTimeout(open, Math.max(0, MIN - elapsed()));
     }
     inputs.forEach(function (type) {
-      window.addEventListener(type, open, { capture: true, passive: true });
+      window.addEventListener(type, skip, { capture: true, passive: true });
     });
     document.addEventListener('monolith:scene-ready', ready, { once: true });
     document.addEventListener('monolith:poster', ready, { once: true });

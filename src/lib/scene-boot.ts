@@ -46,6 +46,7 @@ import type { SceneHandle, StoryMap } from '../scene/index';
 import { isPageView, VIEW_SCALE_CAP, type PageView } from '../scene/views';
 import type { StoryBridge, StoryController, StoryMode } from './story';
 import type { RevealController } from './reveal';
+import { onLeave, posterReason, track } from './analytics';
 
 /** Upper bounds for each boot step, so no path can hang. */
 const TIER_TIMEOUT_MS = 4000;
@@ -56,6 +57,8 @@ const FIRST_FRAME_TIMEOUT_MS = 8000;
 const CONTEXT_RESTORE_TIMEOUT_MS = 10000;
 /** After `load`, how long the GPU check may run before the scene chunk is prefetched. */
 const PREFETCH_DELAY_MS = 1000;
+/** After the first frame, how long before the visit's tier counts as settled (analytics). */
+const TIER_SETTLE_MS = 5000;
 /** Matches --dur-fade: the canvas's cross-fade over the poster. */
 const CROSSFADE_MS = 1200;
 
@@ -85,6 +88,9 @@ let prefetched = false;
 /** Why the tier is what it is, for the poster's recorded reason. */
 let tierReason = '';
 let posterReasonRecorded = false;
+/** Why the live scene last gave way to the poster (failed setup, no frame, lost context). */
+let teardownReason = '';
+let tierReported = false;
 
 let handle: SceneHandle | null = null;
 /** Bumped whenever an in-flight scene load must be abandoned. */
@@ -198,7 +204,10 @@ function setTier(next: QualityTier, reason: string, fromScene = false) {
   } else {
     recordPosterTier();
   }
-  if (next === 'poster') document.dispatchEvent(new CustomEvent('monolith:poster'));
+  if (next === 'poster') {
+    document.dispatchEvent(new CustomEvent('monolith:poster'));
+    reportTier();
+  }
   story?.setMode(storyMode());
 }
 
@@ -259,6 +268,29 @@ function prefetchScene() {
   mark('scene chunk prefetch');
 }
 
+// ── Analytics ─────────────────────────────────────────────────────────────
+
+/**
+ * `scene_tier`, once per visit: what the visitor actually got. Sent when the
+ * poster is decided, a few seconds after the live scene's first frame (so an
+ * early step down in place counts), or when the page is first hidden.
+ * `live: false` with a live tier means the scene hadn't rendered yet (the
+ * visitor left first); the poster carries a short reason category.
+ */
+function reportTier() {
+  if (tierReported) return;
+  tierReported = true;
+  if (pending) return track('scene_tier', { tier: 'pending', live: false });
+  const live = Boolean(handle && firstFrameSeen);
+  if (live) return track('scene_tier', { tier: handle!.tier, live });
+  if (isSceneTier(tier) && !sceneBlocked) return track('scene_tier', { tier, live });
+  track('scene_tier', {
+    tier: 'poster',
+    live,
+    reason: posterReason(sceneBlocked ? teardownReason : tierReason),
+  });
+}
+
 // ── Scene ─────────────────────────────────────────────────────────────────
 
 /** The scroll story talks to the scene only through this bridge: always the current handle. */
@@ -310,6 +342,8 @@ function onFirstFrame() {
   firstFrameSeen = true;
   clearTimeout(firstFrameTimer);
   mark('first frame');
+  teardownReason = '';
+  setTimeout(reportTier, TIER_SETTLE_MS);
   stage()?.classList.add('is-live');
   // The intro (first visit) can open now: L1 is on screen.
   document.dispatchEvent(new CustomEvent('monolith:scene-ready'));
@@ -347,6 +381,8 @@ function teardownScene(reason: string, { loseContext = false } = {}) {
   stage()?.classList.remove('is-live');
   setWash(0, '');
   fallback(`poster: ${reason}`);
+  teardownReason = reason;
+  if (sceneBlocked) reportTier();
   // Let the canvas fade back to the poster before releasing the GPU resources.
   if (current) setTimeout(() => current.dispose({ loseContext }), CROSSFADE_MS + 100);
 }
@@ -665,6 +701,7 @@ export function initSceneBoot() {
   });
 
   bindPointer();
+  onLeave(reportTier);
   onPage();
   setSceneStats(() =>
     handle ? { gpu: handle.gpuTimings()?.ms ?? null, lines: handle.stats() } : null,

@@ -87,6 +87,13 @@ const CARDS: Card[] = [
     accent: 'edge of the map.',
     scene: 'view=notfound',
   },
+  {
+    key: 'privacy',
+    eyebrow: 'Privacy',
+    title: 'Your details,',
+    accent: 'in plain English.',
+    scene: 'view=about',
+  },
 ];
 for (const [dir, prefix, eyebrow, view] of [
   ['work', 'case', 'Case study', 'case'],

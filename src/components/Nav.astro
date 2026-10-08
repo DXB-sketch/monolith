@@ -65,6 +65,8 @@ const current = (href: string) =>
 </header>
 
 <script>
+  import { pagePath, track } from '../lib/analytics';
+
   // Mobile disclosure menu. Re-bound after every ClientRouter navigation because
   // the header is swapped with each page.
   let controller: AbortController | undefined;
@@ -160,7 +162,10 @@ const current = (href: string) =>
     if (!item || !button || button.dataset.bound) return;
     button.dataset.bound = 'true';
     item.hidden = false;
-    button.addEventListener('click', () => void setSound(!soundOn));
+    button.addEventListener('click', () => {
+      if (!soundOn) track('sound_on', { page: pagePath() });
+      void setSound(!soundOn);
+    });
     renderSound();
   }
 

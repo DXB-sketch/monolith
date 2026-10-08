@@ -3,6 +3,8 @@ import { defineConfig } from 'astro/config';
 import vercel from '@astrojs/vercel';
 import sitemap from '@astrojs/sitemap';
 import { placeholderReport } from './src/integrations/placeholder-report';
+import { securityHeaders } from './src/integrations/security-headers';
+import { SITE } from './src/lib/site';
 
 /**
  * Writes the scene chunk's built URL into scene-boot.ts (in place of the
@@ -74,6 +76,7 @@ export default defineConfig({
       serialize: (item) => ({ ...item, url: item.url.replace(/(?<!:\/)\/$/, '') || item.url }),
     }),
     placeholderReport(),
+    securityHeaders({ bookingUrl: SITE.bookingUrl }),
   ],
   trailingSlash: 'ignore',
   prefetch: false,

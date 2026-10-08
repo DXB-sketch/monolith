@@ -12,6 +12,7 @@
  */
 import { STEPS, type FieldName } from './contact-fields';
 import type { FieldErrors } from './contact-schema';
+import { track as trackEvent } from './analytics';
 
 /**
  * The validator brings Zod, so it loads on demand: fetched as soon as the
@@ -78,6 +79,8 @@ export function initBrief() {
   const track = form.querySelector<HTMLElement>('[data-brief-track]');
   /** Steps that have passed their checks: each leaves a lava line in the track. */
   const completed = new Set<number>();
+  /** The furthest step reached this visit (analytics: each new step counted once). */
+  let furthest = 0;
   const hadServerErrors = !summary.hidden;
   let current = 0;
 
@@ -190,6 +193,11 @@ export function initBrief() {
     completed.add(current);
     clearErrors();
     showStep(current + 1);
+    // Analytics: the step number and its name only, never an answer.
+    if (current > furthest) {
+      furthest = current;
+      trackEvent('contact_step', { step: current + 1, name: STEPS[current]!.id });
+    }
   });
 
   back.addEventListener('click', () => {
@@ -235,6 +243,7 @@ export function initBrief() {
       };
       if (response.ok && reply.ok) {
         clearDraft();
+        trackEvent('contact_submit');
         form.hidden = true;
         // The stone answers: its core vein flares briefly (live tiers; lib/scene-boot.ts).
         document.dispatchEvent(new CustomEvent('monolith:flare'));

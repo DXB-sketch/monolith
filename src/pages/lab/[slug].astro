@@ -115,14 +115,38 @@ const dateFormat = new Intl.DateTimeFormat('en-AU', {
 <script>
   import { DEMOS, isDemoKey } from '../../lab/demos';
 
+  /**
+   * The site's tier once it has settled. On a direct visit the GPU check is
+   * still running at page load (no `data-tier` yet), and the demo must not
+   * start on a device the site itself keeps on the poster (a software
+   * renderer, a weak GPU). Gives up after 10 s, as unsettled.
+   */
+  function settledTier(): Promise<string | undefined> {
+    const root = document.documentElement;
+    if (root.dataset.tier) return Promise.resolve(root.dataset.tier);
+    return new Promise((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (!root.dataset.tier) return;
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(root.dataset.tier);
+      });
+      const timer = setTimeout(() => {
+        observer.disconnect();
+        resolve(undefined);
+      }, 10_000);
+      observer.observe(root, { attributes: true, attributeFilter: ['data-tier'] });
+    });
+  }
+
   /** Swap the still for the live demo where it can run, and wire its controls. */
   async function initDemo() {
     const stage = document.querySelector<HTMLElement>('[data-demo]');
     const key = stage?.dataset.demo;
     if (!stage || !isDemoKey(key)) return;
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const poster = document.documentElement.dataset.tier === 'poster';
-    if (reduced || poster) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const tier = await settledTier();
+    if (!tier || tier === 'poster' || !stage.isConnected) return;
 
     const { startDemo } = await DEMOS[key]();
     const canvas = stage.querySelector<HTMLCanvasElement>('canvas')!;
