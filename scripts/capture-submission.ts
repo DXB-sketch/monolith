@@ -174,12 +174,12 @@ async function recording() {
     for (let i = 0; i < seconds * 60; i++) await capture();
   };
   /** Scroll smoothly (eased) to y over `seconds`, one frame at a time. */
-  const scrollTo = async (y: number, seconds: number) => {
+  const scrollToY = async (y: number, seconds: number) => {
     const from = await page.evaluate(() => scrollY);
     const count = Math.round(seconds * 60);
     for (let i = 1; i <= count; i++) {
       const top = from + (y - from) * ease(i / count);
-      await page.evaluate((top) => scrollTo({ top, behavior: 'instant' }), top);
+      await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), top);
       await capture();
     }
   };
@@ -192,7 +192,7 @@ async function recording() {
 
   await load(page, '/', 'high');
   await hold(1.5);
-  await scrollTo(await chapterY('face-i'), 3.5);
+  await scrollToY(await chapterY('face-i'), 3.5);
   await hold(1.2);
 
   // Into the SEQDVGC case study through its card: the page transition.
@@ -200,20 +200,20 @@ async function recording() {
     document.querySelector<HTMLAnchorElement>('#face-i a[href="/work/seqdvgc"]')?.click(),
   );
   await hold(3);
-  await scrollTo((await page.evaluate(() => innerHeight)) * 1.2, 3);
+  await scrollToY((await page.evaluate(() => innerHeight)) * 1.2, 3);
   await hold(1);
-  await scrollTo(0, 1.5);
+  await scrollToY(0, 1.5);
   await hold(0.5);
 
   // And back: the story is restored where it was left.
   await page.evaluate(() => history.back());
   await hold(2);
   for (const id of ['face-ii', 'the-lab', 'the-core']) {
-    await scrollTo(await chapterY(id), 3);
+    await scrollToY(await chapterY(id), 3);
     await hold(1);
   }
   // The dive.
-  await scrollTo(await page.evaluate(() => scrollY + innerHeight * 1.3), 4);
+  await scrollToY(await page.evaluate(() => scrollY + innerHeight * 1.3), 4);
   await hold(2);
   await page.context().close();
 
