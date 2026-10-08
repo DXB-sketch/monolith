@@ -9,11 +9,13 @@
  * in every tier" check.
  *
  * Modes: high and lite (forced with ?tier=, live WebGL), poster (the default
- * in a GPU-less container), static (prefers-reduced-motion), and no-JS.
+ * in a GPU-less container), static (prefers-reduced-motion), and no-JS (pages
+ * served without their scripts, since axe itself needs JavaScript).
  *
  * Usage: npm run build && npm run serve:prod   (another terminal)
  *        npm run audit:a11y [-- http://localhost:4600]
- * CHROMIUM_PATH optional. Exits 1 on any violation.
+ * MODES=high,lite,poster,static,no-js runs a subset. CHROMIUM_PATH optional.
+ * Exits 1 on any violation.
  */
 import AxeBuilder from '@axe-core/playwright';
 import { chromium, type Browser, type BrowserContextOptions, type Page } from 'playwright-core';
@@ -44,8 +46,10 @@ const MODES: Mode[] = [
   { name: 'lite', query: '?tier=lite', context: {} },
   { name: 'poster', query: '', context: {} },
   { name: 'static', query: '', context: { reducedMotion: 'reduce' } },
-  { name: 'no-js', query: '', context: { javaScriptEnabled: false } },
+  { name: 'no-js', query: '', context: {} },
 ];
+const only = process.env.MODES?.split(',');
+const NO_SCRIPT = /<script\b(?![^>]*application\/ld\+json)[^>]*>[\s\S]*?<\/script>/g;
 const SIZES = [
   { name: 'desktop', viewport: { width: 1440, height: 900 } },
   { name: 'phone', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
@@ -93,6 +97,19 @@ async function audit(page: Page, label: string, csp: string[], errors: string[])
 
 async function open(browser: Browser, mode: Mode, size: (typeof SIZES)[number]) {
   const context = await browser.newContext({ ...mode.context, ...size });
+  if (mode.name === 'no-js') {
+    // axe needs JavaScript to run, so the page's own is removed instead: every
+    // document is served without its scripts and no script loads, exactly
+    // what a visitor without JavaScript gets.
+    await context.route('**/*', async (route) => {
+      const request = route.request();
+      if (request.resourceType() === 'script') return route.abort();
+      if (request.resourceType() !== 'document') return route.continue();
+      const response = await route.fetch({ maxRedirects: 0 });
+      const body = (await response.text()).replace(NO_SCRIPT, '');
+      return route.fulfill({ response, body });
+    });
+  }
   const page = await context.newPage();
   const csp: string[] = [];
   const errors: string[] = [];
@@ -115,7 +132,7 @@ async function settle(page: Page, mode: Mode) {
   }
   // The intro (first visit) has opened.
   await page.waitForTimeout(1500);
-  if (mode.context.javaScriptEnabled !== false) {
+  if (mode.name !== 'no-js') {
     await page.evaluate(async () => {
       for (let y = 0; y < document.body.scrollHeight; y += innerHeight / 2) {
         scrollTo(0, y);
@@ -164,7 +181,7 @@ const browser = await chromium.launch({
 });
 
 try {
-  for (const mode of MODES) {
+  for (const mode of MODES.filter((m) => !only || only.includes(m.name))) {
     for (const size of SIZES) {
       // Live tiers on the phone size cost minutes on a software renderer; the
       // markup is the same as the poster's, so they run at desktop size only.
@@ -182,7 +199,7 @@ try {
 
       // ── States ──────────────────────────────────────────────────────────
       const label = `${mode.name} ${size.name}`;
-      if (mode.context.javaScriptEnabled === false) {
+      if (mode.name === 'no-js') {
         // No-JS error round trip: submit the empty form, come back with errors.
         const { context, page, csp, errors } = await open(browser, mode, size);
         await page.goto(`${base}/contact`);
