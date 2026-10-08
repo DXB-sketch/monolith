@@ -26,7 +26,8 @@
     "audit:a11y": "tsx scripts/audit-a11y.ts",
     "test:flows": "tsx scripts/test-flows.ts",
     "audit:manual": "tsx scripts/audit-manual.ts",
-    "capture": "tsx scripts/capture-submission.ts"
+    "capture": "tsx scripts/capture-submission.ts",
+    "capture:work": "tsx scripts/capture-work.ts"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",
