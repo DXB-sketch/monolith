@@ -23,10 +23,11 @@ page, for example:
 
 ```
 [WARN] [monolith-placeholder-report] 28 placeholders still to supply, on 14 pages:
-  /: [STUDIO EMAIL], [$ PRICE], ...
-  /about: [FOUNDER PHOTO TO BE SUPPLIED], [FOUNDER BIO TO BE SUPPLIED], ...
-  /contact (on demand): [CAL.COM BOOKING URL], [$X], [$Y]
-  /privacy: [REVIEW BEFORE LAUNCH]
+  /: [STUDIO EMAIL], [CONCEPT PROJECT], [SUBJECT TO BE CHOSEN], [$ PRICE], …
+  /about: [FOUNDER NAME], [FOUNDER PHOTO TO BE SUPPLIED], [FOUNDER BIO TO BE SUPPLIED], …
+  /contact (on demand): [REPLY TIME TO BE SUPPLIED], [$X], [$Y]
+  /contact/thanks: [REPLY TIME TO BE SUPPLIED], [CAL.COM BOOKING URL], …
+  /privacy: [REVIEW BEFORE LAUNCH], …
   Site URL: [DOMAIN] (set PUBLIC_SITE_URL)
 ```
 
@@ -39,6 +40,10 @@ Where things live:
       booking URL (`bookingUrl`, e.g. `https://cal.com/your-name/intro`).
 - [ ] **Prices** (`src/lib/site.ts` packages and `src/lib/contact-fields.ts` budget
       ranges): every `[$ PRICE]`, `[$X]` and `[$Y]`.
+- [ ] **Packages and FAQ** (`src/lib/site.ts`): what's included in each package and the
+      FAQ answers. **Ongoing care and hosting** details: `src/pages/services.astro` and
+      the home page's Core chapter (`src/pages/index.astro`).
+- [ ] **Reply time** after a brief is sent (`src/components/ContactSuccess.astro`).
 - [ ] **About page** (`src/pages/about.astro`): founder photo and bio.
 - [ ] **Case studies** (`src/content/work/*.md`): the bracketed facts, real screenshots
       and recordings (the image paths are in each file's front matter), and client quotes
@@ -165,6 +170,14 @@ Node.js version (Settings → General) to 22.x to match.
       the address you entered, and that the success message shows.
 - [ ] **Book a call:** tap "Book a call" on the contact page; the Cal.com calendar should
       open inline (or the plain link, if Cal.com is blocked).
+- [ ] **The Lab demo:** open `/lab/light-through-stone` on your laptop. The live shader
+      should replace the still, and both sliders should respond to dragging and to the
+      arrow keys. (It couldn't be tried during the build: it deliberately refuses
+      software renderers, and the build machine had no GPU.)
+- [ ] **Firefox and Safari:** do the same checks once in each. To run the automated
+      flows in them: `npx playwright install firefox webkit`, `npm run build`,
+      `npm run serve:prod`, then `BROWSER=firefox npm run test:flows` and
+      `BROWSER=webkit npm run test:flows`.
 - [ ] **Screen reader test,** below.
 - [ ] **Sharing:** paste your home page and a case study URL into a message to yourself
       (or LinkedIn's Post Inspector) and check the preview image and title.

@@ -31,7 +31,7 @@ As in earlier phases, all measurements were taken in this container, which has *
 - **What it scans.** After every build, the gate scans the built HTML (titles, meta, alt text, JSON-LD and Open Graph included) and the sources of the on-demand `/contact` page. It prints the missing items grouped by page.
 - **Strict mode.** With `VERCEL_ENV=production` or `STRICT_CONTENT=1`, the build **fails** with that list. Preview and local builds only warn. Verified both ways: a strict build exits 1, a normal build passes with the warning.
 - **Drafts.** A `draft` flag (default `false`) was added to the `work` and `lab` schemas. Draft entries are left out of every listing, route and the sitemap (they still show in `astro dev`), so the unchosen concept can be shipped as a draft.
-- **Current list:** 29 placeholders on 15 page groups (the build prints them; `LAUNCH.md` §1 says where each lives). It includes the Privacy page's `[REVIEW BEFORE LAUNCH]` flag and `[DOMAIN]`.
+- **Current list:** 28 distinct placeholders across 13 pages plus the site URL (the build prints them; `LAUNCH.md` §1 says where each lives). It includes the Privacy page's `[REVIEW BEFORE LAUNCH]` flag and `[DOMAIN]`.
 
 ### Step 3: SEO and sharing
 
@@ -95,7 +95,7 @@ The flows are:
 - a deep link
 - a navigation round trip that checks the canvas persists
 - the whole contact form with Resend mocked, checking the events carry no personal data
-- the Lab demo (forced Lite)
+- the Lab demo, forced Lite. The demo itself refuses software renderers (its Phase 3 check), so here the flow verifies the still is shown; its live controls need a real GPU
 
 Every flow fails on any CSP violation, page error or console error. The suite is written for Chromium, Firefox and WebKit. Fixed here: a CSP violation on every navigation, the ClientRouter's `data:` script sentinel (see Step 8).
 
@@ -151,10 +151,10 @@ frame-ancestors 'none'
   - `Strict-Transport-Security: max-age=63072000; includeSubDomains` (no `preload`; see `LAUNCH.md` §3)
   - `X-Content-Type-Options: nosniff`
   - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Permissions-Policy`: camera, microphone, geolocation, payment, USB, serial, Bluetooth, HID, MIDI, motion sensors, display capture and topics all denied
+  - `Permissions-Policy`: camera, microphone, geolocation, payment, USB, serial, HID, MIDI, motion sensors, display capture and topics all denied
   - `X-Frame-Options: DENY`
   - `Cross-Origin-Opener-Policy: same-origin`
-- **Tested under the policy:** every axe and flow run uses these exact headers (`npm run serve:prod` applies the Build Output routes the way Vercel does). That covers High, Lite, Poster, static and no-JS; the intro; the Lab demo; the contact form, including no-JS, errors and success; and "Book a call". **0 CSP violations.**
+- **Tested under the policy:** every axe and flow run uses these exact headers (`npm run serve:prod` applies the Build Output routes the way Vercel does). That covers High, Lite, Poster, static and no-JS; the intro; the Lab page; the contact form, including no-JS, errors and success; and "Book a call". **0 CSP violations.**
 - **Contact endpoint** (`npm run test:contact`, production build, Resend mocked): validation, the size limit, the rate limit, the honeypot, the signed timing token, the origin check, provider failure, HTML escaping and clean logs **all pass**.
 - **Secrets:** the client output was searched for `RESEND_API_KEY`, `CONTACT_*`, `api.resend.com`, `re_…` keys and `SECRET`. Nothing found; the only hits were inside Three.js's `texture_compression` strings.
 - **npm audit:**
@@ -269,7 +269,8 @@ A first-run contrast failure on `/work` at High was measured mid-reveal (element
 | Keyboard, 11 pages: skip link first, every stop visible with a focus indicator, no traps | pass |
 | Keyboard: mobile menu (opens, Tab enters, Escape closes, focus returns) | pass |
 | Keyboard: the whole contact form (radios, Next, Enter to advance, send, focus to the success heading), Book a call | pass |
-| Keyboard: sound toggle (`aria-pressed`), Lab demo sliders | pass |
+| Keyboard: sound toggle (`aria-pressed`) | pass |
+| Keyboard: Lab demo sliders | not testable here: the demo declines software renderers (the still is shown); the sliders are native range inputs |
 | Link text out of context, 11 pages | pass |
 | Reduced motion: no infinite animations, all content visible | pass |
 | No-JS: all content visible | pass |
@@ -287,7 +288,7 @@ The screen-reader test is a manual script for the owner (`LAUNCH.md` §5).
 | Deep link `/#the-lab` | pass | pass | not run* | not run* |
 | Round trip home → work → case → back → back → forward, canvas persists | pass (after the CSP fix) | pass | not run* | not run* |
 | Contact, Resend mocked, no personal data in events | pass | pass | not run* | not run* |
-| Lab demo (forced Lite) | pass | pass | not run* | not run* |
+| Lab page (forced Lite; the demo declines software renderers, so the still is checked) | pass | pass | not run* | not run* |
 
 \* **Firefox and WebKit aren't installed in this container,** and its rules don't allow downloading browser builds. The suite supports both engines unchanged. Running it is the first item under "Outstanding", and `LAUNCH.md` §5 covers it.
 
@@ -301,7 +302,7 @@ The screen-reader test is a manual script for the owner (`LAUNCH.md` §5).
 | Home, everything loaded in the first seconds (gz) | 63.6 KB, of which the story and GSAP chunks (about 46 KB) load after first paint |
 | Scene chunk (gz), lazily loaded on live tiers | 151.0 KB (+ layers chunk 20.5 KB) |
 | Posters / OG images / fonts | 200 KB / 632 KB (12 images) / 100 KB |
-| Submission screenshots / recording | see `submission/README.md` |
+| Submission screenshots / recording | 30 JPEGs, 7.6 MB / 35.2 s at 1920×1080, 60 fps: MP4 (H.264) 20.5 MB, WebM (VP9) 12.9 MB |
 
 ---
 
@@ -320,10 +321,11 @@ The screen-reader test is a manual script for the owner (`LAUNCH.md` §5).
 2. **Privacy page:** the owner reviews it and removes the flag.
 3. **Accounts, keys, domain, merge:** `LAUNCH.md` §2–4.
 4. **Firefox and WebKit:** on a machine with the browsers, run `npx playwright install firefox webkit`, then `npm run build`, `npm run serve:prod`, and `BROWSER=firefox npm run test:flows` and `BROWSER=webkit npm run test:flows`. Also test on a real iPhone (Safari) and Android (Chrome) during `LAUNCH.md` §5.
-5. **Real-device numbers:** frame rates and Core Web Vitals on real hardware (`?fps`, then Speed Insights after launch).
-6. **Screen-reader pass:** the owner runs the script in `LAUNCH.md` §5.
-7. **Regenerate after content changes:** run `npm run og` and `npm run capture`. The current OG images and submission assets show placeholder text.
-8. **Custom analytics events** may depend on the Vercel plan (`LAUNCH.md` §2).
+5. **The Lab demo's live mode and sliders:** check on a device with a GPU (`/lab/light-through-stone`).
+6. **Real-device numbers:** frame rates and Core Web Vitals on real hardware (`?fps`, then Speed Insights after launch).
+7. **Screen-reader pass:** the owner runs the script in `LAUNCH.md` §5.
+8. **Regenerate after content changes:** run `npm run og` and `npm run capture`. The current OG images and submission assets show placeholder text.
+9. **Custom analytics events** may depend on the Vercel plan (`LAUNCH.md` §2).
 
 ## For anyone continuing
 

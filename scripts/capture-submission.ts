@@ -70,7 +70,12 @@ const stepAnimations = (page: Page, ms: number) =>
       // Scroll-driven animations (the reading progress) follow the scroll, not time.
       if (animation.timeline !== document.timeline || animation.playState === 'finished') continue;
       animation.pause();
-      animation.currentTime = Number(animation.currentTime ?? 0) + ms;
+      const time = Number(animation.currentTime ?? 0) + ms;
+      // A paused animation never finishes by itself, and a view transition
+      // waits for all of its animations to finish: finish them at their end.
+      const end = Number(animation.effect?.getComputedTiming().endTime ?? Infinity);
+      if (time >= end) animation.finish();
+      else animation.currentTime = time;
     }
   }, ms);
 

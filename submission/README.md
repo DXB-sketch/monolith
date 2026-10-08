@@ -46,7 +46,7 @@ for a phone shot with the full scene, use a High-tier device.)
 - `monolith-recording-1080p60.mp4`: H.264, 1920×1080, 60 fps
 - `monolith-recording-1080p60.webm`: VP9, 1920×1080, 60 fps
 
-About 30 seconds: the home story from the arrival to Face I, into the SEQDVGC
+35 seconds: the home story from the arrival to Face I, into the SEQDVGC
 case study through its card (the page transition), a look down the case study,
 back to the story (restored where it was left), then Face II, the Lab, the Core
 and the dive. No sound.

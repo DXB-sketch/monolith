@@ -35,7 +35,6 @@ const PERMISSIONS_POLICY = [
   'payment=()',
   'usb=()',
   'serial=()',
-  'bluetooth=()',
   'hid=()',
   'midi=()',
   'magnetometer=()',

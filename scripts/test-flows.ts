@@ -9,7 +9,8 @@
  *   round trip   home → work → case study → back → back → forward, with the
  *                canvas persisting across the ClientRouter navigations
  *   contact      the whole brief, sent (Resend mocked by serve:prod)
- *   lab          the demo runs (forced ?tier=lite) and its controls respond
+ *   lab          the demo (forced ?tier=lite) runs and its controls respond; where
+ *                the demo itself declines (it refuses software renderers), the still
  *   analytics    the events queued along the way, and that none of them holds
  *                anything typed into the form
  *
