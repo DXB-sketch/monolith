@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import PageIntro from '../components/PageIntro.astro';
 import ServiceCard from '../components/ServiceCard.astro';
 import NextStep from '../components/NextStep.astro';
-import { SERVICES, PROCESS, FAQ } from '../lib/site';
+import { SERVICES, PROCESS, FAQ, CARE } from '../lib/site';
 ---
 
 <BaseLayout
@@ -40,7 +40,9 @@ import { SERVICES, PROCESS, FAQ } from '../lib/site';
       <h2 id="care-title" class="heading">
         Ongoing care and hosting
       </h2>
-      <p class="block__text">[DETAILS TO BE SUPPLIED]</p>
+      {CARE.details.map((text) => (
+        <p class="block__text">{text}</p>
+      ))}
     </div>
   </section>
 

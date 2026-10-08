@@ -2,7 +2,8 @@
 /**
  * Book a call. The Cal.com embed (a third-party script and iframe) loads only
  * when the visitor clicks "Book a call"; until then nothing is fetched. The
- * plain link always works: without JS, or if the embed fails to load.
+ * plain link always works: without JS, or if the embed fails to load. Until a
+ * booking page is set (SITE.bookingUrl), the call is arranged by email.
  */
 import { SITE } from '../lib/site';
 
@@ -21,42 +22,58 @@ const Heading = `h${headingLevel}` as 'h2' | 'h3';
 const url = SITE.bookingUrl;
 const configured = /^https:\/\//.test(url);
 const titleId = `book-title-${Math.random().toString(36).slice(2, 8)}`;
+// No booking page yet: the call is arranged by email instead.
+const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('Arranging a call')}`;
 ---
 
-<section
-  class="book"
-  data-book
-  data-book-url={configured ? url : ''}
-  aria-labelledby={label ? undefined : titleId}
-  aria-label={label}
->
-  <Heading id={titleId} class="subheading">
-    Prefer to talk?
-  </Heading>
-  <p class="book__text">
-    Book a short call and we’ll talk it through: what you need, what it might cost, and whether I’m
-    the right fit.
-  </p>
-  <div class="book__actions">
-    <button class="btn btn--ghost" type="button" data-book-open hidden>
-      Book a call
-      <span class="btn__arrow" aria-hidden="true">
-        →
-      </span>
-    </button>
-    {configured ? (
+{configured ? (
+  <section
+    class="book"
+    data-book
+    data-book-url={url}
+    aria-labelledby={label ? undefined : titleId}
+    aria-label={label}
+  >
+    <Heading id={titleId} class="subheading">
+      Prefer to talk?
+    </Heading>
+    <p class="book__text">
+      Book a short call and we’ll talk it through: what you need, what it might cost, and whether
+      I’m the right fit.
+    </p>
+    <div class="book__actions">
+      <button class="btn btn--ghost" type="button" data-book-open hidden>
+        Book a call
+        <span class="btn__arrow" aria-hidden="true">
+          →
+        </span>
+      </button>
       <a class="book__link" href={url} rel="noopener" data-book-link>
         Open the booking page<span class="visually-hidden"> on Cal.com</span>
       </a>
-    ) : (
-      <span class="book__link" data-book-link>
-        Booking link: {url}
-      </span>
-    )}
-  </div>
-  <p class="book__status" role="status" data-book-status></p>
-  <div class="book__embed" data-book-embed hidden></div>
-</section>
+    </div>
+    <p class="book__status" role="status" data-book-status />
+    <div class="book__embed" data-book-embed hidden />
+  </section>
+) : (
+  <section class="book" aria-labelledby={label ? undefined : titleId} aria-label={label}>
+    <Heading id={titleId} class="subheading">
+      Prefer to talk?
+    </Heading>
+    <p class="book__text">
+      Email me and we’ll find a time for a short call: what you need, what it might cost, and
+      whether I’m the right fit.
+    </p>
+    <div class="book__actions">
+      <a class="btn btn--ghost" href={mailto} data-book-link>
+        Arrange a call
+        <span class="btn__arrow" aria-hidden="true">
+          →
+        </span>
+      </a>
+    </div>
+  </section>
+)}
 
 <script>
   import { initBooking } from '../lib/booking';

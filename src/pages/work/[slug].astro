@@ -88,10 +88,12 @@ const SCORES = [
           <dt class="label">Type</dt>
           <dd>{data.clientType}</dd>
         </div>
-        <div>
-          <dt class="label">Year</dt>
-          <dd>{data.year}</dd>
-        </div>
+        {data.year && (
+          <div>
+            <dt class="label">Year</dt>
+            <dd>{data.year}</dd>
+          </div>
+        )}
       </dl>
       {data.isConcept && (
         <p class="case-hero__concept">
@@ -125,14 +127,16 @@ const SCORES = [
     </figure>
   </header>
 
-  <section class="case-section" aria-labelledby="challenge-title">
-    <div class="container case-section__inner" data-reveal>
-      <h2 id="challenge-title" class="label case-section__label">
-        The challenge
-      </h2>
-      <p class="case-section__text">{data.challenge}</p>
-    </div>
-  </section>
+  {data.challenge && (
+    <section class="case-section" aria-labelledby="challenge-title">
+      <div class="container case-section__inner" data-reveal>
+        <h2 id="challenge-title" class="label case-section__label">
+          The challenge
+        </h2>
+        <p class="case-section__text">{data.challenge}</p>
+      </div>
+    </section>
+  )}
 
   <section class="case-section" aria-labelledby="decisions-title">
     <div class="container case-section__inner">

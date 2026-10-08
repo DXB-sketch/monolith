@@ -52,7 +52,9 @@ Astro.response.headers.set('cache-control', 'no-store');
         <BookCall />
         <div class="contact__email">
           <h2 class="subheading">Or email me</h2>
-          <p>{SITE.email}</p>
+          <p>
+            <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+          </p>
         </div>
       </aside>
     </div>

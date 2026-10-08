@@ -10,9 +10,10 @@ export const NEEDS = [
 ] as const;
 
 export const BUDGETS = [
-  { value: 'under-x', label: 'Under [$X]' },
-  { value: 'x-to-y', label: '[$X]–[$Y]' },
-  { value: 'over-y', label: '[$Y]+' },
+  { value: '300-700', label: '$300–$700' },
+  { value: '700-1100', label: '$700–$1,100' },
+  { value: '1100-1800', label: '$1,100–$1,800' },
+  { value: 'over-1800', label: '$1,800+' },
   { value: 'not-sure', label: 'Not sure yet' },
 ] as const;
 

@@ -1,9 +1,7 @@
 ---
 /**
- * Privacy (Phase 5). Plain English, and only what the site actually does. Flagged
- * for the owner to review before launch: the flag is a bracketed placeholder,
- * so the placeholder gate keeps production builds from shipping until it's
- * removed. No certifications or legal compliance are claimed.
+ * Privacy (Phase 5). Plain English, and only what the site actually does
+ * (reviewed by the owner). No certifications or legal compliance are claimed.
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageIntro from '../components/PageIntro.astro';
@@ -25,8 +23,6 @@ import { SITE } from '../lib/site';
 
   <section class="privacy" aria-label="Privacy details">
     <div class="container privacy__inner" data-reveal>
-      <p class="privacy__review label">[REVIEW BEFORE LAUNCH]</p>
-
       <h2 class="heading">The contact form</h2>
       <p>
         When you send a project brief, what you enter (your name, email, business, phone if you give
@@ -57,10 +53,17 @@ import { SITE } from '../lib/site';
       </p>
 
       <h2 class="heading">Booking a call</h2>
-      <p>
-        Booking a call is handled by Cal.com. Nothing from Cal.com loads until you choose “Book a
-        call”, and what you enter there is covered by Cal.com’s own privacy policy.
-      </p>
+      {SITE.bookingUrl ? (
+        <p>
+          Booking a call is handled by Cal.com. Nothing from Cal.com loads until you choose “Book a
+          call”, and what you enter there is covered by Cal.com’s own privacy policy.
+        </p>
+      ) : (
+        <p>
+          Calls are arranged by email, so what you send is handled the same way as any other email
+          to me.
+        </p>
+      )}
 
       <h2 class="heading">Hosting</h2>
       <p>The site is hosted by Vercel, whose servers handle every request, as any web host’s do.</p>
@@ -89,9 +92,5 @@ import { SITE } from '../lib/site';
 
   .privacy__inner .heading {
     margin-top: var(--space-l);
-  }
-
-  .privacy__inner .privacy__review {
-    color: var(--lava-hot);
   }
 </style>

@@ -52,13 +52,12 @@ function devRoutes() {
 }
 
 /**
- * The site's public origin: set PUBLIC_SITE_URL in Vercel (Production) once the
- * domain is connected. Canonical URLs, the sitemap, Open Graph images and
- * structured data all derive from it. The placeholder keeps preview and local
- * builds working; production builds refuse to ship with it (placeholder gate).
+ * The site's public origin. Canonical URLs, the sitemap, Open Graph images and
+ * structured data all derive from it. PUBLIC_SITE_URL overrides it (e.g. a
+ * staging domain); production uses the real domain by default.
  */
-export const SITE_PLACEHOLDER = 'https://monolith.example';
-const site = process.env.PUBLIC_SITE_URL?.replace(/\/$/, '') || SITE_PLACEHOLDER;
+export const SITE_URL = 'https://monolithstudio.au';
+const site = process.env.PUBLIC_SITE_URL?.replace(/\/$/, '') || SITE_URL;
 
 // Static output: every page is prerendered at build time. The Vercel adapter is
 // present so individual routes can opt out with `export const prerender = false`

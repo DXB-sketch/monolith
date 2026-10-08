@@ -46,7 +46,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
               </span>
               <span class="work-row__meta">
                 <span class="label">{entry.data.clientType}</span>
-                <span class="label">{entry.data.year}</span>
+                {entry.data.year && <span class="label">{entry.data.year}</span>}
                 {entry.data.isConcept && <span class="work-row__badge label">Concept</span>}
               </span>
               {entry.data.isConcept && <span class="work-row__note">{CONCEPT_NOTE}</span>}
