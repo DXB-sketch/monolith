@@ -8,16 +8,28 @@ import { SITE } from '../lib/site';
 
 interface Props {
   headingLevel?: 2 | 3;
+  /**
+   * The region's accessible name, where the page has another booking section
+   * (the form's success message on /contact): landmarks need distinct names.
+   * Defaults to the visible heading.
+   */
+  label?: string;
 }
 
-const { headingLevel = 2 } = Astro.props;
+const { headingLevel = 2, label } = Astro.props;
 const Heading = `h${headingLevel}` as 'h2' | 'h3';
 const url = SITE.bookingUrl;
 const configured = /^https:\/\//.test(url);
 const titleId = `book-title-${Math.random().toString(36).slice(2, 8)}`;
 ---
 
-<section class="book" data-book data-book-url={configured ? url : ''} aria-labelledby={titleId}>
+<section
+  class="book"
+  data-book
+  data-book-url={configured ? url : ''}
+  aria-labelledby={label ? undefined : titleId}
+  aria-label={label}
+>
   <Heading id={titleId} class="subheading">
     Prefer to talk?
   </Heading>

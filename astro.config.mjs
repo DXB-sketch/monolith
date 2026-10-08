@@ -89,6 +89,11 @@ export default defineConfig({
     build: {
       // The scene chunk is lazily imported; keep Three.js out of the entry.
       chunkSizeWarningLimit: 900,
+      // Never inline module scripts into the HTML. With inline module scripts
+      // on a page, the ClientRouter adds a `data:` script as an ordering
+      // sentinel on every navigation, which the Content-Security-Policy
+      // (rightly) refuses. Other assets keep Vite's default 4 KB rule.
+      assetsInlineLimit: (file) => (file.endsWith('.js') ? false : undefined),
     },
   },
 });

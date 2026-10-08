@@ -24,7 +24,9 @@
     "test:contact": "tsx scripts/test-contact.ts",
     "serve:prod": "tsx scripts/serve-prod.ts",
     "audit:a11y": "tsx scripts/audit-a11y.ts",
-    "test:flows": "tsx scripts/test-flows.ts"
+    "test:flows": "tsx scripts/test-flows.ts",
+    "audit:manual": "tsx scripts/audit-manual.ts",
+    "capture": "tsx scripts/capture-submission.ts"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",

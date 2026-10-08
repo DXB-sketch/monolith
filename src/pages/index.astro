@@ -363,6 +363,12 @@ const lab = (await getCollection('lab', published)).sort(
     width: 100%;
     max-width: 40rem;
   }
+  /* 320 px screens: room for the display heading's longest word. */
+  @media (max-width: 22rem) {
+    .chapter__panel {
+      padding-inline: var(--space-m);
+    }
+  }
 
   /* Copy over the scene sits on an obsidian panel, so its contrast never depends on the frame. */
   .chapter__panel {

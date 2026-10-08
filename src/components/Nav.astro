@@ -480,6 +480,20 @@ const current = (href: string) =>
   }
 
   @media (max-width: 22rem) {
+    /* 320 px screens: the wordmark, the CTA and the menu button fit on one line. */
+    .nav {
+      padding-left: var(--space-xs);
+    }
+
+    .nav__brand {
+      font-size: 0.6875rem;
+    }
+
+    .nav__cta {
+      --btn-pad-x: 0.75em;
+      font-size: 0.75rem;
+    }
+
     .nav__toggle-label {
       position: absolute;
       width: 1px;

@@ -113,7 +113,7 @@ async function settle(page: Page, mode: Mode) {
       .waitForSelector('[data-scene-stage].is-live', { timeout: 60_000 })
       .catch(() => console.log('       (scene did not go live in time)'));
   }
-  // Reveals finish; the intro (first visit) has opened.
+  // The intro (first visit) has opened.
   await page.waitForTimeout(1500);
   if (mode.context.javaScriptEnabled !== false) {
     await page.evaluate(async () => {
@@ -123,8 +123,28 @@ async function settle(page: Page, mode: Mode) {
       }
       scrollTo(0, 0);
     });
-    await page.waitForTimeout(800);
+    await revealsDone(page);
   }
+}
+
+/**
+ * Every reveal has finished (full opacity all the way up): contrast is only
+ * meaningful on the final state. On a software renderer the live tiers keep
+ * the main thread busy, so reveals can take seconds there.
+ */
+async function revealsDone(page: Page) {
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('[data-reveal]')].every((el) => {
+          for (let node: Element | null = el; node; node = node.parentElement)
+            if (Number(getComputedStyle(node).opacity) < 0.99) return false;
+          return true;
+        }),
+      null,
+      { timeout: 20_000, polling: 250 },
+    )
+    .catch(() => console.log('       (reveals still running after 20 s)'));
 }
 
 async function fillBrief(page: Page) {
@@ -206,7 +226,7 @@ try {
         const { context, page, csp, errors } = await open(browser, mode, size);
         await page.goto(`${base}/contact${mode.query}`);
         await settle(page, mode);
-        const book = page.locator('[data-book-open]');
+        const book = page.locator('[data-book-open]:visible').first();
         if (await book.isVisible()) {
           await book.click();
           await page.waitForTimeout(800);

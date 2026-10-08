@@ -9,7 +9,7 @@
  *   round trip   home → work → case study → back → back → forward, with the
  *                canvas persisting across the ClientRouter navigations
  *   contact      the whole brief, sent (Resend mocked by serve:prod)
- *   lab          the demo's controls respond (where WebGL2 runs)
+ *   lab          the demo runs (forced ?tier=lite) and its controls respond
  *   analytics    the events queued along the way, and that none of them holds
  *                anything typed into the form
  *
@@ -195,6 +195,7 @@ try {
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(3200); // the form's minimum fill time
       for (const step of ['need', 'budget', 'timeline']) {
+        await page.waitForSelector(`fieldset:not([hidden]) input[name="${step}"]`);
         await page.locator(`input[name="${step}"]`).first().check({ force: true });
         await page.click('[data-brief-next]');
       }
@@ -216,7 +217,7 @@ try {
     });
 
     await run('lab', size, async (page) => {
-      await page.goto(`${base}/lab/light-through-stone`);
+      await page.goto(`${base}/lab/light-through-stone?tier=lite`);
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(2500);
       const controls = page.locator('[data-demo-controls]');
