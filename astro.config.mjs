@@ -30,14 +30,41 @@ function sceneChunkUrl() {
   };
 }
 
+/**
+ * Dev-only routes (the scene viewer used by the poster, capture and cost
+ * scripts). Injected under `astro dev` only, so nothing of them reaches a
+ * production build.
+ * @returns {import('astro').AstroIntegration}
+ */
+function devRoutes() {
+  return {
+    name: 'monolith-dev-routes',
+    hooks: {
+      'astro:config:setup': ({ command, injectRoute }) => {
+        if (command !== 'dev') return;
+        injectRoute({ pattern: '/dev/scene', entrypoint: './src/dev/scene.astro' });
+      },
+    },
+  };
+}
+
+/**
+ * The site's public origin: set PUBLIC_SITE_URL in Vercel (Production) once the
+ * domain is connected. Canonical URLs, the sitemap, Open Graph images and
+ * structured data all derive from it. The placeholder keeps preview and local
+ * builds working; production builds refuse to ship with it (placeholder gate).
+ */
+export const SITE_PLACEHOLDER = 'https://monolith.example';
+const site = process.env.PUBLIC_SITE_URL?.replace(/\/$/, '') || SITE_PLACEHOLDER;
+
 // Static output: every page is prerendered at build time. The Vercel adapter is
 // present so individual routes can opt out with `export const prerender = false`
 // (the contact endpoint in src/pages/api/contact.ts, wired up in Phase 3).
 export default defineConfig({
-  site: 'https://monolith.example',
+  site,
   output: 'static',
   adapter: vercel(),
-  integrations: [placeholderReport()],
+  integrations: [devRoutes(), placeholderReport()],
   trailingSlash: 'ignore',
   prefetch: false,
   devToolbar: { enabled: false },

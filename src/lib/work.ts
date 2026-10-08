@@ -18,8 +18,12 @@ export interface Project {
   isConcept: boolean;
 }
 
+/** Published entries only: drafts appear under `astro dev` and nowhere else. */
+export const published = ({ data }: { data: { draft: boolean } }) =>
+  import.meta.env.DEV || !data.draft;
+
 export async function getWork(): Promise<WorkEntry[]> {
-  const entries = await getCollection('work');
+  const entries = await getCollection('work', published);
   return entries.sort((a, b) => a.data.order - b.data.order);
 }
 

@@ -1,4 +1,5 @@
 ---
+import { published } from '../../lib/work';
 import { getCollection, render, type CollectionEntry } from 'astro:content';
 import { Picture } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
@@ -8,7 +9,7 @@ import { isDemoKey } from '../../lab/demos';
 import still from '../../assets/lab/light-through-stone.png';
 
 export async function getStaticPaths() {
-  const entries = await getCollection('lab');
+  const entries = await getCollection('lab', published);
   return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
 }
 

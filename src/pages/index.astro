@@ -4,15 +4,16 @@ import Hud from '../components/Hud.astro';
 import FaceCard from '../components/FaceCard.astro';
 import ServiceCard from '../components/ServiceCard.astro';
 import { SERVICES, SITE, CTA } from '../lib/site';
-import { getWork, toProject } from '../lib/work';
+import { getWork, toProject, published } from '../lib/work';
 import { getCollection } from 'astro:content';
 
 // The story has a face for each of the first two projects; the concept sits in the Lab chapter.
 const work = (await getWork()).map(toProject);
 const seqdvgc = work.find((p) => p.slug === 'seqdvgc')!;
 const allen = work.find((p) => p.slug === 'allen-gillon')!;
-const concept = work.find((p) => p.isConcept)!;
-const lab = (await getCollection('lab')).sort(
+// The concept may be a draft (its subject not yet chosen): then the Lab chapter shows no card.
+const concept = work.find((p) => p.isConcept);
+const lab = (await getCollection('lab', published)).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
 );
 ---
@@ -123,7 +124,7 @@ const lab = (await getCollection('lab')).sort(
           </a>
         </div>
         <div class="chapter__block" data-reveal>
-          <FaceCard project={concept} />
+          {concept && <FaceCard project={concept} />}
         </div>
       </div>
     </section>
