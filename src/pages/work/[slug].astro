@@ -12,6 +12,7 @@ import ReadProgress from '../../components/ReadProgress.astro';
 import NextStep from '../../components/NextStep.astro';
 import Recording from '../../components/Recording.astro';
 import { CONCEPT_NOTE, getWork, hostOf, type WorkEntry } from '../../lib/work';
+import { breadcrumbs, caseStudy } from '../../lib/structured-data';
 
 export async function getStaticPaths() {
   const work = await getWork();
@@ -52,7 +53,19 @@ const SCORES = [
 <BaseLayout
   view="case"
   footerCta={false}
-  title={data.seo?.title ?? data.title}
+  og={`case-${entry.id}`}
+  jsonLd={[
+    caseStudy(entry, `/og/case-${entry.id}.jpg`, Astro.site!),
+    breadcrumbs(
+      [
+        { name: 'Home', path: '/' },
+        { name: 'Work', path: '/work' },
+        { name: data.title, path: `/work/${entry.id}` },
+      ],
+      Astro.site!,
+    ),
+  ]}
+  title={data.seo?.title ?? `${data.title}: ${data.isConcept ? 'a concept' : 'case study'}`}
   description={data.seo?.description ?? data.summary}
 >
   <ReadProgress />

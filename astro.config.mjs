@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import vercel from '@astrojs/vercel';
+import sitemap from '@astrojs/sitemap';
 import { placeholderReport } from './src/integrations/placeholder-report';
 
 /**
@@ -64,7 +65,16 @@ export default defineConfig({
   site,
   output: 'static',
   adapter: vercel(),
-  integrations: [devRoutes(), placeholderReport()],
+  integrations: [
+    devRoutes(),
+    sitemap({
+      // Not for search: the thank-you page (noindex), dev and API routes.
+      filter: (page) => !/\/(dev|api)\//.test(page) && !/\/contact\/thanks\/?$/.test(page),
+      // One canonical form per page, as in <link rel="canonical">: no trailing slash.
+      serialize: (item) => ({ ...item, url: item.url.replace(/(?<!:\/)\/$/, '') || item.url }),
+    }),
+    placeholderReport(),
+  ],
   trailingSlash: 'ignore',
   prefetch: false,
   devToolbar: { enabled: false },
