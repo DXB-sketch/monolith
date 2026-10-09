@@ -10,7 +10,9 @@
  *   keyboard      Tab through every page: the skip link comes first, every stop
  *                 is visible with a visible focus indicator, no traps; the mobile
  *                 menu opens, closes with Escape and returns focus; the whole
- *                 contact form works from the keyboard
+ *                 contact form works from the keyboard; the /potential gate
+ *                 (forced pass) enters by keyboard, and the nav's 3D pill
+ *                 (bar and mobile menu) works by keyboard in both modes
  *   links         link text that makes sense out of context
  *   reduced       prefers-reduced-motion: no running infinite animations, all
  *                 content visible
@@ -31,6 +33,7 @@ if (shots) mkdirSync(shots, { recursive: true });
 
 const PAGES = [
   '/',
+  '/potential',
   '/work',
   '/work/seqdvgc',
   '/services',
@@ -217,6 +220,63 @@ try {
       'keyboard Arrange a call',
       `focused=${focused} href=${href}`,
     );
+  });
+
+  // The gate (forced pass), Enter the stone, then Back to 2D from the nav's pill.
+  await withPage({ viewport: { width: 1440, height: 900 } }, async (page) => {
+    await load(page, '/potential?tier=high');
+    const passed = await page
+      .waitForFunction(
+        () => document.querySelector('[data-gate]')?.getAttribute('data-state') === 'passed',
+        null,
+        {
+          timeout: 90_000,
+        },
+      )
+      .then(() => true)
+      .catch(() => false);
+    await page.focus('[data-gate-enter]');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1500);
+    const entered = await page.evaluate(() => ({
+      focus: document.activeElement?.id ?? '',
+      mode: document.documentElement.dataset.experience,
+    }));
+    const exit = page.locator('.nav__potential[data-experience-exit]');
+    await exit.focus();
+    const exitLabel = (await exit.getAttribute('aria-label')) ?? '';
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
+    const after = await page.evaluate(() => ({
+      mode: document.documentElement.dataset.experience,
+      focus: document.activeElement?.hasAttribute('data-potential-link') ?? false,
+    }));
+    check(
+      passed &&
+        entered.focus === 'hero-title' &&
+        entered.mode === '3d' &&
+        after.mode === '2d' &&
+        after.focus,
+      'keyboard gate: Enter the stone, then Back to 2D from the nav',
+      `passed=${passed} focus=${entered.focus} mode=${entered.mode} exit="${exitLabel}" → mode=${after.mode} focusOnLink=${after.focus}`,
+    );
+  });
+
+  // The pill in the mobile menu, reached by keyboard.
+  await withPage({ viewport: { width: 390, height: 844 }, hasTouch: true }, async (page) => {
+    await load(page, '/services');
+    await page.focus('.nav__toggle');
+    await page.keyboard.press('Enter');
+    let reached = false;
+    for (let i = 0; i < 12 && !reached; i++) {
+      await page.keyboard.press('Tab');
+      reached = await page.evaluate(
+        () =>
+          document.activeElement?.matches('#nav-menu [data-potential-link]') === true &&
+          (document.activeElement as HTMLElement).offsetWidth > 0,
+      );
+    }
+    check(reached, 'keyboard mobile menu: See the potential · 3D');
   });
 
   await withPage({ viewport: { width: 1440, height: 900 } }, async (page) => {

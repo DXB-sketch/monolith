@@ -7,9 +7,12 @@
  * and console errors, so it doubles as the "everything works under the CSP,
  * in every tier" check.
  *
- * Modes: high and lite (forced with ?tier=, live WebGL), poster (the default
- * in a GPU-less container), static (prefers-reduced-motion), and no-JS (pages
- * served without their scripts, since axe itself needs JavaScript).
+ * Modes: high and lite (forced with ?tier=, live WebGL: 3D mode), 2d (the
+ * default everywhere since Phase 6), static (prefers-reduced-motion), and
+ * no-JS (pages served without their scripts, since axe itself needs JavaScript).
+ * /potential is audited at its gate as well as inside the story: in the live
+ * modes the gate passes (forced) and "Enter the stone" is pressed; in 2D the
+ * gate's own result (here: a software renderer, so it fails) is audited.
  *
  * Usage: npm run build && npm run serve:prod   (another terminal)
  *        npm run audit:a11y [-- http://localhost:4600]
@@ -23,6 +26,7 @@ const base = process.argv[2] ?? 'http://localhost:4600';
 
 const PAGES = [
   '/',
+  '/potential',
   '/work',
   '/work/seqdvgc',
   '/services',
@@ -43,7 +47,7 @@ interface Mode {
 const MODES: Mode[] = [
   { name: 'high', query: '?tier=high', context: {} },
   { name: 'lite', query: '?tier=lite', context: {} },
-  { name: 'poster', query: '', context: {} },
+  { name: '2d', query: '', context: {} },
   { name: 'static', query: '', context: { reducedMotion: 'reduce' } },
   { name: 'no-js', query: '', context: {} },
 ];
@@ -117,10 +121,33 @@ async function open(browser: Browser, mode: Mode, size: (typeof SIZES)[number]) 
   return { context, page, csp, errors };
 }
 
+const live = (mode: Mode) => mode.name === 'high' || mode.name === 'lite';
+
+/**
+ * /potential's gate: wait for its verdict (and audit it), then in the live
+ * modes enter the story.
+ */
+async function throughGate(page: Page, mode: Mode, label: string, csp: string[], errors: string[]) {
+  if (mode.name === 'no-js') return;
+  await page
+    .waitForFunction(
+      () =>
+        /passed|failed/.test(
+          document.querySelector('[data-gate]')?.getAttribute('data-state') ?? '',
+        ),
+      null,
+      { timeout: 90_000 },
+    )
+    .catch(() => console.log('       (the gate gave no verdict in time)'));
+  await audit(page, `${label} (gate)`, csp, errors);
+  if (live(mode)) await page.click('[data-gate-enter]');
+}
+
 /** Let the page settle: fonts, reveals, and (live tiers) the scene's first frame. */
-async function settle(page: Page, mode: Mode) {
+async function settle(page: Page, mode: Mode, path = '') {
   await page.waitForLoadState('networkidle').catch(() => {});
-  if (mode.name === 'high' || mode.name === 'lite') {
+  // The 2D home page never runs the scene, whatever the mode.
+  if (live(mode) && path !== '/') {
     await page
       .waitForSelector('[data-scene-stage].is-live', { timeout: 60_000 })
       .catch(() => console.log('       (scene did not go live in time)'));
@@ -184,11 +211,13 @@ try {
       for (const path of PAGES) {
         const { context, page, csp, errors } = await open(browser, mode, size);
         await page.goto(base + path + mode.query, { waitUntil: 'load' });
-        await settle(page, mode);
+        const label = `${mode.name} ${size.name} ${path}`;
+        if (path === '/potential') await throughGate(page, mode, label, csp, errors);
+        await settle(page, mode, path);
         // The 404 page logs its own 404 response: expected.
         if (path === '/no-such-page')
           errors.splice(0, errors.length, ...errors.filter((e) => !/404/.test(e)));
-        await audit(page, `${mode.name} ${size.name} ${path}`, csp, errors);
+        await audit(page, label, csp, errors);
         await context.close();
       }
 

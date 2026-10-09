@@ -2,12 +2,23 @@
 /**
  * The main flows, in any browser engine (Phase 5 cross-browser checks):
  *
- *   tiers        the tier each engine settles on by default, and that the
- *                forced live tiers (?tier=lite, ?tier=high) render a frame
- *   story        home story scroll: every chapter reached, the dive, the CTA
- *   deep link    /#the-lab lands on that chapter
- *   round trip   home → work → case study → back → back → forward, with the
- *                canvas persisting across the ClientRouter navigations
+ *   no webgl     a first visit to /, /work, /services, /about, /lab or /contact
+ *                requests no scene chunk, no fissure atlas and starts no worker
+ *                (2D is the default, Phase 6)
+ *   tiers        2D by default (the poster, reason experience-2d), and that the
+ *                forced live tiers (?tier=lite, ?tier=high) render a frame on a
+ *                content page
+ *   gate pass    /potential?tier=high: the gate passes, Enter the stone starts
+ *                the story (live) and focuses its heading
+ *   gate fail    /potential?tier=poster: the gate fails with a reason and its
+ *                way back reaches the home page
+ *   story        the /potential story scroll in 2D: every chapter, the CTA
+ *   deep link    /potential#the-lab lands on that chapter
+ *   round trip   2D: home → /potential by the nav pill (the gate's verdict) →
+ *                work → case study → back → back → forward, the canvas persisting;
+ *                3D: /potential?tier=high → enter → work (live view) → home
+ *                (stage hidden) → /potential (no gate, live) → reload (still 3D)
+ *                → Back to 2D (scene stopped, no reload)
  *   contact      the whole brief, sent (Resend mocked by serve:prod)
  *   lab          the demo (forced ?tier=lite) runs and its controls respond; where
  *                the demo itself declines (it refuses software renderers), the still
@@ -20,7 +31,8 @@
  * Usage: npm run build && npm run serve:prod   (another terminal)
  *        BROWSER=chromium|firefox|webkit npm run test:flows [-- http://localhost:4600]
  * Firefox and WebKit need `npx playwright install firefox webkit` first.
- * CHROMIUM_PATH optional (Chromium only). Exits 1 on any failure.
+ * FLOWS=gate pass,round trip runs a subset. CHROMIUM_PATH optional (Chromium only).
+ * Exits 1 on any failure.
  */
 import { chromium, firefox, webkit, type BrowserContext, type Page } from 'playwright-core';
 
@@ -65,6 +77,7 @@ async function run(
   body: (page: Page, context: BrowserContext) => Promise<string | void>,
   contextOptions = {},
 ) {
+  if (process.env.FLOWS && !process.env.FLOWS.split(',').includes(flow)) return;
   const context = await browser.newContext({ ...size, ...contextOptions });
   // Record the site's analytics events (src/lib/analytics.ts) as they fire.
   await context.addInitScript(() => {
@@ -96,8 +109,29 @@ async function run(
 const tierOf = (page: Page) =>
   page.evaluate(() => ({
     tier: document.documentElement.dataset.tier ?? 'pending',
+    experience: document.documentElement.dataset.experience ?? '?',
     live: Boolean(document.querySelector('[data-scene-stage].is-live')),
   }));
+
+const gateVerdict = (page: Page) =>
+  page.waitForFunction(
+    () =>
+      /passed|failed/.test(document.querySelector('[data-gate]')?.getAttribute('data-state') ?? ''),
+    null,
+    { timeout: 120_000 },
+  );
+
+const gateState = (page: Page) =>
+  page.evaluate(() => document.querySelector('[data-gate]')?.getAttribute('data-state') ?? null);
+
+/** Pass the gate (forced with ?tier=) and enter the story. */
+async function enterStone(page: Page) {
+  await gateVerdict(page);
+  if ((await gateState(page)) !== 'passed') throw new Error('the gate did not pass');
+  await page.click('[data-gate-enter]');
+  await page.waitForFunction(() => document.documentElement.hasAttribute('data-entered'));
+  await page.waitForSelector('[data-scene-stage].is-live', { timeout: 90_000 });
+}
 
 /** The analytics events fired on the page so far (recorded by the init script). */
 const events = (page: Page) =>
@@ -118,10 +152,35 @@ const browser = await engine.launch(
 
 try {
   for (const size of SIZES) {
+    await run('no webgl', size, async (page) => {
+      const hits: string[] = [];
+      page.on('request', (request) => {
+        const url = request.url();
+        if (/\/_astro\/(scene|layers)\.|fissures/.test(url)) hits.push(url.replace(base, ''));
+      });
+      page.on('worker', (worker) => hits.push(`worker ${worker.url().slice(0, 40)}`));
+      const paths = ['/', '/work', '/services', '/about', '/lab', '/contact'];
+      for (const path of paths) {
+        // A first visit each time: nothing remembered from the last page.
+        await page.goto(`${base}${path}`);
+        await page.evaluate(() => {
+          localStorage.clear();
+          sessionStorage.clear();
+        });
+        await page.reload();
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(2500);
+        await page.mouse.wheel(0, 2000);
+        await page.waitForTimeout(800);
+      }
+      if (hits.length) throw new Error(`WebGL requests on a first visit: ${hits.join(', ')}`);
+      return `${paths.length} pages: no scene chunk, no atlas, no worker`;
+    });
+
     await run('tiers', size, async (page) => {
       const notes: string[] = [];
       for (const query of ['', '?tier=lite', '?tier=high']) {
-        await page.goto(`${base}/${query}`);
+        await page.goto(`${base}/work${query}`);
         if (query) {
           await page.waitForSelector('[data-scene-stage].is-live', { timeout: 90_000 });
         } else {
@@ -130,14 +189,48 @@ try {
           });
           await page.waitForTimeout(2000);
         }
-        const { tier, live } = await tierOf(page);
-        notes.push(`${query || 'default'} → ${tier}${live ? ' (live)' : ''}`);
+        const { tier, experience, live } = await tierOf(page);
+        if (!query && (experience !== '2d' || tier !== 'poster' || live))
+          throw new Error(`default is not 2D: ${experience}, ${tier}`);
+        notes.push(`${query || 'default'} → ${experience} ${tier}${live ? ' (live)' : ''}`);
       }
       return notes.join(', ');
     });
 
+    await run('gate pass', size, async (page) => {
+      await page.goto(`${base}/potential?tier=high`);
+      await enterStone(page);
+      await page.waitForTimeout(800);
+      const state = await page.evaluate(() => ({
+        focus: document.activeElement?.id,
+        gateHidden: (document.querySelector('[data-gate]') as HTMLElement).hidden,
+        stored: localStorage.getItem('monolith:experience'),
+      }));
+      if (state.focus !== 'hero-title') throw new Error(`focus on ${state.focus}`);
+      if (!state.gateHidden || state.stored !== '3d') throw new Error(JSON.stringify(state));
+      await page.mouse.wheel(0, 1800);
+      await page.waitForTimeout(1500);
+      return 'passed (forced), entered, story live, heading focused, 3d stored';
+    });
+
+    await run('gate fail', size, async (page) => {
+      await page.goto(`${base}/potential?tier=poster`);
+      await gateVerdict(page);
+      if ((await gateState(page)) !== 'failed') throw new Error('the gate did not fail');
+      const reason = (await page.locator('[data-gate-reason]').innerText()).trim();
+      if (!reason) throw new Error('no reason shown');
+      if (await page.locator('[data-gate-enter]').isVisible())
+        throw new Error('Enter the stone still shown after failing');
+      await page.click('[data-gate-back]');
+      await page.waitForURL(`${base}/`);
+      const { live } = await tierOf(page);
+      if (live) throw new Error('scene live after failing');
+      return `failed: "${reason}"; back to the 2D site`;
+    });
+
     await run('story', size, async (page) => {
-      await page.goto(`${base}/`);
+      await page.goto(`${base}/potential`);
+      await gateVerdict(page);
       await page.waitForLoadState('networkidle');
       const ids = ['arrival', 'face-i', 'face-ii', 'the-lab', 'the-core'];
       for (const id of ids) {
@@ -159,7 +252,7 @@ try {
     });
 
     await run('deep link', size, async (page) => {
-      await page.goto(`${base}/#the-lab`);
+      await page.goto(`${base}/potential#the-lab`);
       await page.waitForTimeout(1500);
       const top = await page.locator('#the-lab').evaluate((el) => el.getBoundingClientRect().top);
       if (Math.abs(top) > 900) throw new Error(`#the-lab is ${Math.round(top)}px from the top`);
@@ -167,35 +260,116 @@ try {
     });
 
     await run('round trip', size, async (page) => {
-      await page.goto(`${base}/`);
-      await page.waitForLoadState('networkidle');
-      await page.evaluate(() => {
-        const canvas = document.querySelector('[data-scene-canvas]');
-        if (canvas) (canvas as HTMLElement & { __marked?: boolean }).__marked = true;
-      });
-      const h1 = () => page.locator('h1').first().innerText();
-      if (size.name === 'phone') await page.click('.nav__toggle');
-      await page.click('nav a[href="/work"]');
-      await page.waitForURL('**/work');
-      await page.locator('a[href="/work/seqdvgc"]').first().click();
-      await page.waitForURL('**/work/seqdvgc');
-      const caseTitle = await h1();
-      await page.goBack();
-      await page.waitForURL('**/work');
-      await page.goBack();
-      await page.waitForURL(`${base}/`);
-      await page.goForward();
-      await page.waitForURL('**/work');
-      await page.waitForTimeout(600);
-      const persisted = await page.evaluate(
-        () =>
-          (
-            document.querySelector('[data-scene-canvas]') as
-              (HTMLElement & { __marked?: boolean }) | null
-          )?.__marked === true,
-      );
-      if (!persisted) throw new Error('the canvas was replaced during navigation');
-      return `case study "${caseTitle.replace(/\s+/g, ' ')}", canvas persisted`;
+      const mark = () =>
+        page.evaluate(() => {
+          const canvas = document.querySelector('[data-scene-canvas]');
+          if (canvas) (canvas as HTMLElement & { __marked?: boolean }).__marked = true;
+        });
+      const persisted = () =>
+        page.evaluate(
+          () =>
+            (
+              document.querySelector('[data-scene-canvas]') as
+                (HTMLElement & { __marked?: boolean }) | null
+            )?.__marked === true,
+        );
+      const stageShown = () =>
+        page.evaluate(
+          () => getComputedStyle(document.querySelector('[data-scene-stage]')!).display !== 'none',
+        );
+      let step = '';
+      let verdict: string | null;
+      let caseTitle: string;
+      const nav = async (href: string) => {
+        step = `nav ${href}`;
+        if (href === '/potential') await page.click('.nav > .nav__potential[data-potential-link]');
+        else {
+          if (size.name === 'phone') await page.click('.nav__toggle');
+          await page.click(`nav a[href="${href}"]`);
+        }
+        await page.waitForURL(`**${href}`);
+        await page.waitForTimeout(600);
+      };
+
+      try {
+        // 2D: home → /potential (by the pill) → work → case → back → back → forward.
+        await page.goto(`${base}/`);
+        await page.waitForLoadState('networkidle');
+        if (await stageShown()) throw new Error('the stage shows on the 2D home page');
+        await mark();
+        await nav('/potential');
+        await gateVerdict(page);
+        verdict = await gateState(page);
+        if (!(await stageShown())) throw new Error('no poster on /potential');
+        await nav('/work');
+        await page.locator('a[href="/work/seqdvgc"]').first().click();
+        await page.waitForURL('**/work/seqdvgc');
+        caseTitle = (await page.locator('h1').first().innerText()).replace(/\s+/g, ' ');
+        await page.goBack();
+        await page.waitForURL('**/work');
+        await page.goBack();
+        await page.waitForURL('**/potential');
+        await page.goForward();
+        await page.waitForURL('**/work');
+        await page.waitForTimeout(600);
+        if (!(await persisted())) throw new Error('the canvas was replaced (2D)');
+
+        // 3D: enter at the gate, then work → home → potential, reload, Back to 2D.
+        await page.goto(`${base}/potential?tier=high`);
+        await enterStone(page);
+        await mark();
+        await nav('/work');
+        await page.waitForSelector('[data-scene-stage].is-live.is-view', { timeout: 60_000 });
+        await page.locator('.nav__brand').click();
+        await page.waitForURL(`${base}/`);
+        await page.waitForTimeout(600);
+        if (await stageShown()) throw new Error('the stage shows on the home page in 3D mode');
+        // In 3D mode the pill reads Back to 2D: the Eruption card's note links here.
+        step = 'home to /potential (Eruption note)';
+        // Scrolled to first and left to finish its reveal, so the click lands on it.
+        await page.locator('main a[href="/potential"]').scrollIntoViewIfNeeded();
+        await page.waitForTimeout(1800);
+        await page.click('main a[href="/potential"]');
+        await page.waitForURL('**/potential');
+        if (await page.locator('[data-gate]').isVisible()) throw new Error('the gate shows again');
+        await page.waitForSelector('[data-scene-stage].is-live', { timeout: 60_000 });
+        if (!(await persisted())) throw new Error('the canvas was replaced (3D)');
+        // Entering without ?tier= writes this session's tier (enterExperience); a
+        // forced tier never does, so it's written here as a real device would have it.
+        // (Without it the reload probes the GPU again and, on this software
+        // renderer, rightly ends in 2D.)
+        await page.evaluate(() =>
+          sessionStorage.setItem(
+            'monolith:tier',
+            JSON.stringify({
+              v: 2,
+              tier: 'high',
+              reason: 'passed the gate at high',
+              ceiling: 'high',
+              upgraded: [],
+              scale: 1,
+              gpu: '',
+            }),
+          ),
+        );
+        step = 'reload /work (3D remembered)';
+        await page.goto(`${base}/work`);
+        await page.waitForSelector('[data-scene-stage].is-live', { timeout: 90_000 });
+        const afterReload = await tierOf(page);
+        if (afterReload.experience !== '3d') throw new Error('3D was not remembered on reload');
+        step = 'Back to 2D';
+        await page.click('.nav > .nav__potential[data-experience-exit]');
+        await page.waitForTimeout(1800);
+        const after = await tierOf(page);
+        const stored = await page.evaluate(() => localStorage.getItem('monolith:experience'));
+        if (after.experience !== '2d' || after.live || stored)
+          throw new Error(`Back to 2D left ${JSON.stringify(after)} stored=${stored}`);
+      } catch (e) {
+        throw new Error(`${step}: ${(e as Error).message.split(String.fromCharCode(10))[0]}`, {
+          cause: e,
+        });
+      }
+      return `2D: gate ${verdict}, case "${caseTitle}", canvas persisted; 3D: live view, home hidden, no gate, kept on reload, Back to 2D`;
     });
 
     await run('contact', size, async (page) => {
