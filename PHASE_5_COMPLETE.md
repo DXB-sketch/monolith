@@ -332,3 +332,14 @@ The screen-reader test is a manual script for the owner (`LAUNCH.md` §5).
 - `npm run serve:prod` is the local production stand-in: real function, real headers, CDN-like compression, mocked Resend and analytics. The audit scripts all assume it on port 4600.
 - **New inline scripts** get their CSP hashes automatically. **New third-party origins** must be added to `contentSecurityPolicy()` in `src/integrations/security-headers.ts`, and `npm run test:flows` will fail until they are.
 - **A page-specific inline script on the on-demand `/contact` page** would not be hashed (only built pages are scanned). Keep scripts there as modules, which are never inlined.
+
+## Addendum: hosting moved to Cloudflare
+
+After Phase 5, at the owner's request, hosting moved from Vercel to Cloudflare and the Cal.com booking embed was removed (calls are arranged by email). Real content replaced every placeholder. What changed, for anyone continuing:
+
+- **Adapter:** `@astrojs/cloudflare` (one Worker, `monolith`, with static assets; `wrangler.jsonc`). Pages are prerendered as before; `/contact` and `/api/contact` run on demand in the Worker. `html_handling: "drop-trailing-slash"` keeps the no-trailing-slash canonical URLs.
+- **Headers:** `_headers` (written at build time) covers static assets; Cloudflare doesn't apply it to Worker responses, so `src/middleware.ts` sets the same headers on the on-demand pages and hashes their inline scripts at run time. The policy lives in one place, `src/lib/security-policy.ts`, so the last note above about unhashed inline scripts on `/contact` no longer applies.
+- **Analytics:** Cloudflare Web Analytics (cookieless, injected at the edge). It has no custom events, so `src/lib/analytics.ts` now only raises `monolith:analytics` DOM events; nothing is sent. Speed Insights is replaced by Web Analytics' Core Web Vitals. Item 9 above is moot.
+- **Placeholder gate:** strict on Cloudflare builds of `main` (`WORKERS_CI_BRANCH`), or with `STRICT_CONTENT=1`. Builds of other branches send `X-Robots-Tag: noindex`.
+- **Local tooling:** `npm run serve:prod` and `npm run test:contact` run the built Worker in workerd through wrangler's `unstable_startWorker`, with Resend mocked. `test:flows` reads the DOM events instead of Vercel's queue.
+- **Contact endpoint:** the client IP comes from `cf-connecting-ip`; an oversized body is now drained before the refusal, since workerd otherwise drops the connection.

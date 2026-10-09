@@ -6,8 +6,6 @@ import Footer from '../components/Footer.astro';
 import SceneStage from '../components/SceneStage.astro';
 import Intro from '../components/Intro.astro';
 import Cursor from '../components/Cursor.astro';
-import Analytics from '@vercel/analytics/astro';
-import SpeedInsights from '@vercel/speed-insights/astro';
 import { SITE } from '../lib/site';
 import { PALETTE_HEX } from '../scene/palette';
 import type { PageView } from '../scene/views';
@@ -39,7 +37,7 @@ const {
   jsonLd,
   noindex = false,
 } = Astro.props;
-const fullTitle = title ? `${title} — ${SITE.name}` : `${SITE.name} — Wamuran, Queensland`;
+const fullTitle = title ? `${title} — ${SITE.name}` : `${SITE.name} — ${SITE.location}`;
 // One canonical form per page: no trailing slash (except the root), same as the sitemap.
 const canonical = new URL(Astro.url.pathname.replace(/(.)\/$/, '$1'), Astro.site);
 const ogImage = new URL(`/og/${og}.jpg`, Astro.site);
@@ -141,13 +139,6 @@ const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <Footer cta={footerCta} />
 
     <Cursor />
-
-    <!--
-      Vercel Web Analytics and Speed Insights: cookieless, first-party scripts
-      (/_vercel/...), a page view per navigation. Custom events: lib/analytics.ts.
-    -->
-    <Analytics />
-    <SpeedInsights />
 
     <script>
       import { initSceneBoot } from '../lib/scene-boot';

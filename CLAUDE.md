@@ -4,7 +4,7 @@ Read this file at the start of every session. It is the source of truth for how 
 
 ## What this project is
 
-The portfolio and sales site for **Monolith Web Studio** ("Monolith"), a one-person web design and development studio based in Wamuran, Queensland, Australia.
+The portfolio and sales site for **Monolith Web Studio** ("Monolith"), a one-person web design and development studio based on Bribie Island, Queensland, Australia.
 
 The site has two jobs, and both matter equally:
 
@@ -23,13 +23,13 @@ When these two goals conflict, never sacrifice clarity, speed or accessibility f
 
 ## Tech stack (do not substitute without asking)
 
-- **Astro** (latest stable) with TypeScript, static output, deployed to **Vercel**
+- **Astro** (latest stable) with TypeScript, static output, deployed to **Cloudflare** (Workers with static assets, via `@astrojs/cloudflare`; see `wrangler.jsonc` and `LAUNCH.md`)
 - **Astro ClientRouter (View Transitions)** for page transitions; the WebGL canvas persists across pages with `transition:persist`
 - **Three.js** (vanilla, no React Three Fiber) for the 3D scene
 - **GSAP** + **ScrollTrigger** for scroll-driven animation
 - **Lenis** for smooth scrolling
 - **Astro content collections** (Markdown/MDX) for case studies and lab entries
-- **Resend** for the contact form email (via a Vercel serverless endpoint), **Cal.com** embed for booking calls
+- **Resend** for the contact form email (via the Worker's on-demand endpoint). No booking calendar: calls are arranged by email
 - Plain CSS with custom properties (CSS modules or scoped Astro styles). **No Tailwind. No UI component libraries.**
 
 ## Project structure

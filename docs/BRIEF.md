@@ -9,7 +9,7 @@ Clubs, venues, cafés, makers, musicians and local brands across South East Quee
 Key differentiators to communicate:
 - One person, start to finish. You talk to the maker, not an account manager.
 - Artistic, memorable design **and** strong performance and accessibility scores. Most showpiece sites fail one of those; Monolith's do both.
-- Local: based in Wamuran, at the foot of the Glasshouse Mountains.
+- Local: based on Bribie Island, in Moreton Bay.
 
 ## Audiences
 

@@ -1,85 +1,44 @@
 ---
 /**
- * Book a call. The Cal.com embed (a third-party script and iframe) loads only
- * when the visitor clicks "Book a call"; until then nothing is fetched. The
- * plain link always works: without JS, or if the embed fails to load. Until a
- * booking page is set (SITE.bookingUrl), the call is arranged by email.
+ * Prefer to talk? Calls are arranged by email: no booking calendar, so
+ * nothing third-party loads. The link carries `data-book-link` for the
+ * cta_click analytics event.
  */
 import { SITE } from '../lib/site';
 
 interface Props {
   headingLevel?: 2 | 3;
   /**
-   * The region's accessible name, where the page has another booking section
-   * (the form's success message on /contact): landmarks need distinct names.
-   * Defaults to the visible heading.
+   * The region's accessible name, where the page has another of these
+   * sections (the form's success message on /contact): landmarks need
+   * distinct names. Defaults to the visible heading.
    */
   label?: string;
 }
 
 const { headingLevel = 2, label } = Astro.props;
 const Heading = `h${headingLevel}` as 'h2' | 'h3';
-const url = SITE.bookingUrl;
-const configured = /^https:\/\//.test(url);
 const titleId = `book-title-${Math.random().toString(36).slice(2, 8)}`;
-// No booking page yet: the call is arranged by email instead.
 const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('Arranging a call')}`;
 ---
 
-{configured ? (
-  <section
-    class="book"
-    data-book
-    data-book-url={url}
-    aria-labelledby={label ? undefined : titleId}
-    aria-label={label}
-  >
-    <Heading id={titleId} class="subheading">
-      Prefer to talk?
-    </Heading>
-    <p class="book__text">
-      Book a short call and we’ll talk it through: what you need, what it might cost, and whether
-      I’m the right fit.
-    </p>
-    <div class="book__actions">
-      <button class="btn btn--ghost" type="button" data-book-open hidden>
-        Book a call
-        <span class="btn__arrow" aria-hidden="true">
-          →
-        </span>
-      </button>
-      <a class="book__link" href={url} rel="noopener" data-book-link>
-        Open the booking page<span class="visually-hidden"> on Cal.com</span>
-      </a>
-    </div>
-    <p class="book__status" role="status" data-book-status />
-    <div class="book__embed" data-book-embed hidden />
-  </section>
-) : (
-  <section class="book" aria-labelledby={label ? undefined : titleId} aria-label={label}>
-    <Heading id={titleId} class="subheading">
-      Prefer to talk?
-    </Heading>
-    <p class="book__text">
-      Email me and we’ll find a time for a short call: what you need, what it might cost, and
-      whether I’m the right fit.
-    </p>
-    <div class="book__actions">
-      <a class="btn btn--ghost" href={mailto} data-book-link>
-        Arrange a call
-        <span class="btn__arrow" aria-hidden="true">
-          →
-        </span>
-      </a>
-    </div>
-  </section>
-)}
-
-<script>
-  import { initBooking } from '../lib/booking';
-  document.addEventListener('astro:page-load', initBooking);
-</script>
-
+<section class="book" aria-labelledby={label ? undefined : titleId} aria-label={label}>
+  <Heading id={titleId} class="subheading">
+    Prefer to talk?
+  </Heading>
+  <p class="book__text">
+    Email me and we’ll find a time for a short call: what you need, what it might cost, and whether
+    I’m the right fit.
+  </p>
+  <div class="book__actions">
+    <a class="btn btn--ghost" href={mailto} data-book-link>
+      Arrange a call
+      <span class="btn__arrow" aria-hidden="true">
+        →
+      </span>
+    </a>
+  </div>
+</section>
 <style>
   .book {
     display: grid;
@@ -102,32 +61,5 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('Arranging a c
     flex-wrap: wrap;
     gap: var(--space-s) var(--space-l);
     align-items: center;
-  }
-
-  .book__link {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    font-size: var(--step--1);
-  }
-
-  .book__status:empty {
-    display: none;
-  }
-
-  .book__status {
-    font-size: var(--step--1);
-    color: var(--ash-soft);
-  }
-
-  .book__embed {
-    width: 100%;
-    min-height: 34rem;
-    overflow: auto;
-    border-radius: var(--radius-panel);
-  }
-
-  .book__embed[hidden] {
-    display: none;
   }
 </style>

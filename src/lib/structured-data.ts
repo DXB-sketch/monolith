@@ -10,7 +10,7 @@ import type { WorkEntry } from './work';
 
 const absolute = (path: string, site: URL) => new URL(path, site).href.replace(/(.)\/$/, '$1');
 
-/** The studio: a professional service in Wamuran, serving South East Queensland. */
+/** The studio: a professional service on Bribie Island, serving South East Queensland. */
 export function studio(site: URL) {
   const sameAs = SITE.socials
     .map((social) => social.href)
@@ -27,7 +27,7 @@ export function studio(site: URL) {
     email: SITE.email,
     address: {
       '@type': 'PostalAddress',
-      addressLocality: 'Wamuran',
+      addressLocality: 'Bribie Island',
       addressRegion: 'QLD',
       addressCountry: 'AU',
     },

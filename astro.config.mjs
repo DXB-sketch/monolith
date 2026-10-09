@@ -1,10 +1,9 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import vercel from '@astrojs/vercel';
+import cloudflare from '@astrojs/cloudflare';
 import sitemap from '@astrojs/sitemap';
 import { placeholderReport } from './src/integrations/placeholder-report';
 import { securityHeaders } from './src/integrations/security-headers';
-import { SITE } from './src/lib/site';
 
 /**
  * Writes the scene chunk's built URL into scene-boot.ts (in place of the
@@ -59,13 +58,21 @@ function devRoutes() {
 export const SITE_URL = 'https://monolithstudio.au';
 const site = process.env.PUBLIC_SITE_URL?.replace(/\/$/, '') || SITE_URL;
 
-// Static output: every page is prerendered at build time. The Vercel adapter is
-// present so individual routes can opt out with `export const prerender = false`
-// (the contact endpoint in src/pages/api/contact.ts, wired up in Phase 3).
+// Static output: every page is prerendered at build time, served by Cloudflare as
+// static assets. The Cloudflare adapter runs the routes that opt out with
+// `export const prerender = false` (/contact and /api/contact) in a Worker.
 export default defineConfig({
   site,
   output: 'static',
-  adapter: vercel(),
+  adapter: cloudflare({
+    // Images are optimised at build time (every page that shows one is
+    // prerendered), so no Cloudflare Images binding is needed.
+    imageService: 'compile',
+    // Prerender in Node, as before.
+    prerenderEnvironment: 'node',
+  }),
+  // No sessions are used, so no KV namespace is needed.
+  session: false,
   integrations: [
     devRoutes(),
     sitemap({
@@ -75,7 +82,7 @@ export default defineConfig({
       serialize: (item) => ({ ...item, url: item.url.replace(/(?<!:\/)\/$/, '') || item.url }),
     }),
     placeholderReport(),
-    securityHeaders({ bookingUrl: SITE.bookingUrl }),
+    securityHeaders(),
   ],
   trailingSlash: 'ignore',
   prefetch: false,

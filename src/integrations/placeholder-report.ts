@@ -7,11 +7,11 @@
  *   Open Graph tags and structured data are all checked, and draft entries,
  *   which are not built, are not);
  * - the on-demand pages, which have no HTML at build time (/contact, its
- *   success state and booking), from their source;
+ *   success state), from their source;
  * - the site URL itself, while it is still the placeholder origin.
  *
- * Production builds (VERCEL_ENV=production, or STRICT_CONTENT=1 anywhere)
- * fail while anything is listed. Preview and local builds only warn.
+ * Production builds (Cloudflare Workers Builds of the `main` branch, or
+ * STRICT_CONTENT=1 anywhere) fail while anything is listed. Preview and local builds only warn.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -44,8 +44,11 @@ const ON_DEMAND_SOURCES: [string, string[]][] = [
   ],
 ];
 
+/** Cloudflare's build environment names the branch it is building. */
+const PRODUCTION_BRANCH = process.env.PRODUCTION_BRANCH || 'main';
 export const strictContent = () =>
-  process.env.VERCEL_ENV === 'production' || process.env.STRICT_CONTENT === '1';
+  process.env.STRICT_CONTENT === '1' ||
+  (process.env.WORKERS_CI_BRANCH ?? process.env.CF_PAGES_BRANCH) === PRODUCTION_BRANCH;
 
 /** Every file under `dir` with one of the extensions. */
 function walk(dir: string, extensions: string[]): string[] {
@@ -113,7 +116,7 @@ export function placeholderReport(): AstroIntegration {
         const summary = `${distinct.size} placeholders still to supply, on ${pages.length} pages:\n${lines.join('\n')}`;
         if (strictContent()) {
           throw new Error(
-            `Placeholder gate: this is a production build (VERCEL_ENV=production or STRICT_CONTENT=1) and ${summary}\n` +
+            `Placeholder gate: this is a production build (the production branch on Cloudflare, or STRICT_CONTENT=1) and ${summary}\n` +
               'Fill these in (see LAUNCH.md, step 1), or set a content entry to `draft: true` to leave it out.',
           );
         }

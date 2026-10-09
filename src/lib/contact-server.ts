@@ -25,14 +25,15 @@ export function env(name: string): string | undefined {
 // ── Signed start time ─────────────────────────────────────────────────────
 
 /** Per-process fallback, only when no API key is configured (local development). */
-const fallbackKey = randomBytes(32);
+/** Made on first use: Workers don't allow random values at startup. */
+let fallbackKey: Buffer | null = null;
 
 function signingKey(): Buffer {
   const apiKey = env('RESEND_API_KEY');
   // Derived from the API key, so no extra secret is needed; never the key itself.
   return apiKey
     ? createHmac('sha256', 'monolith-contact-form').update(apiKey).digest()
-    : fallbackKey;
+    : (fallbackKey ??= randomBytes(32));
 }
 
 const sign = (value: string) =>

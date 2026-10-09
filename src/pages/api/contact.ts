@@ -1,5 +1,5 @@
 /**
- * The contact form endpoint (the site's on-demand function on Vercel).
+ * The contact form endpoint (run on demand by the site's Cloudflare Worker).
  *
  * - JS submissions (Accept: application/json) get JSON back; the plain form
  *   gets redirects: /contact/thanks, or back to /contact with its errors.
@@ -38,13 +38,34 @@ async function readBody(request: Request): Promise<Record<string, string> | null
   }
 }
 
+/** Reads and discards a request body, up to 1 MB; beyond that it is cancelled. */
+async function drain(request: Request) {
+  const reader = request.body?.getReader();
+  if (!reader) return;
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      total += value.byteLength;
+      if (total > 1024 * 1024) return void (await reader.cancel());
+    }
+  } catch {
+    // The client went away: nothing to do.
+  }
+}
+
 export const POST: APIRoute = async (context) => {
   const { request, cookies, redirect, url } = context;
   const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
   const secure = url.protocol === 'https:';
   const declared = Number(request.headers.get('content-length') ?? 0);
 
-  const body = declared > MAX_BODY_BYTES ? null : await readBody(request);
+  // Too large: refused, but the body is still drained (in chunks, without
+  // keeping it), so the connection isn't dropped while the client is sending.
+  const tooLarge = declared > MAX_BODY_BYTES;
+  if (tooLarge) await drain(request);
+  const body = tooLarge ? null : await readBody(request);
   if (!body) {
     return wantsJson
       ? json({ ok: false, error: 'invalid' }, 400)
@@ -54,6 +75,7 @@ export const POST: APIRoute = async (context) => {
   // Silent rejections: indistinguishable from a successful send.
   const accepted = () => (wantsJson ? json({ ok: true }) : redirect('/contact/thanks', 303));
   const ip =
+    request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     request.headers.get('x-real-ip') ||
     (() => {

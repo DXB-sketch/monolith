@@ -1,48 +1,26 @@
 /**
- * Security and caching headers (Phase 5), written into the Vercel adapter's
- * Build Output config (`.vercel/output/config.json`) after it is generated,
- * so they apply to every response, static and on demand, with no reliance on
- * `vercel.json` being merged. (The adapter is always the first integration,
- * so its `astro:build:done` has run by the time this one does.)
+ * Security and caching headers for every prerendered page and asset, written
+ * to the build's `_headers` file, which Cloudflare applies to static assets.
+ * The on-demand pages (/contact, /api/contact) get the same security headers
+ * from src/middleware.ts. The policy itself lives in src/lib/security-policy.ts.
  *
- * The Content-Security-Policy allows the site's own origin and nothing else,
- * except what each feature needs:
- * - inline scripts by SHA-256 hash only (the early `js`/intro flags and the
- *   intro's opener), collected from the built pages: no 'unsafe-inline' and no
- *   'unsafe-eval' for scripts;
- * - `blob:` workers (the WebGL probe runs in a worker built from a Blob) and
- *   `blob:`/`data:` images (the fissure atlas is decoded from a Blob);
- * - Cal.com (script, frame, connect, style) for the on-demand booking embed;
- * - Vercel Web Analytics and Speed Insights are same-origin (`/_vercel/...`).
- * Styles keep 'unsafe-inline': style attributes in the markup, the
- * ClientRouter's transition styles and the Cal.com embed all need it.
+ * Inline scripts are allowed by SHA-256 hash, collected from the built pages.
+ * HTML keeps Cloudflare's default caching (revalidated on every request).
  */
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
+import {
+  contentSecurityPolicy,
+  inlineScripts,
+  scriptHash,
+  SECURITY_HEADERS,
+} from '../lib/security-policy';
 
-const CAL_ORIGINS = ['https://app.cal.com', 'https://cal.com'];
-
-/** Two years; `preload` is left to the owner (LAUNCH.md explains why). */
-export const HSTS = 'max-age=63072000; includeSubDomains';
-
-const PERMISSIONS_POLICY = [
-  'camera=()',
-  'microphone=()',
-  'geolocation=()',
-  'payment=()',
-  'usb=()',
-  'serial=()',
-  'hid=()',
-  'midi=()',
-  'magnetometer=()',
-  'gyroscope=()',
-  'accelerometer=()',
-  'display-capture=()',
-  'browsing-topics=()',
-].join(', ');
+const YEAR = 'public, max-age=31536000, immutable';
+/** Not content-hashed (regenerated under the same name), so not immutable. */
+const MONTH = 'public, max-age=2592000, stale-while-revalidate=86400';
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -52,122 +30,45 @@ function walk(dir: string): string[] {
   });
 }
 
-/** SHA-256 sources for every executable inline script in the built pages. */
-export function inlineScriptHashes(html: string[]): string[] {
-  const hashes = new Set<string>();
-  for (const page of html) {
-    for (const match of page.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
-      const attrs = match[1]!;
-      if (/\bsrc=/.test(attrs)) continue;
-      const type = attrs.match(/\btype=["']?([^"'\s>]+)/)?.[1];
-      if (type && !/^(module|text\/javascript|application\/javascript)$/i.test(type)) continue;
-      hashes.add(`'sha256-${createHash('sha256').update(match[2]!).digest('base64')}'`);
-    }
-  }
-  return [...hashes].sort();
-}
-
-/** An extra origin for a self-hosted or custom-domain booking page. */
-function bookingOrigin(url: string | undefined) {
-  try {
-    return url ? new URL(url).origin : null;
-  } catch {
-    return null;
-  }
-}
-
-export function contentSecurityPolicy(scriptHashes: string[], bookingUrl?: string) {
-  const cal = [...new Set([...CAL_ORIGINS, bookingOrigin(bookingUrl)].filter(Boolean))].join(' ');
-  return [
-    "default-src 'self'",
-    `script-src 'self' ${scriptHashes.join(' ')} ${cal}`,
-    `style-src 'self' 'unsafe-inline' ${cal}`,
-    "img-src 'self' data: blob:",
-    "font-src 'self'",
-    "media-src 'self'",
-    `connect-src 'self' ${cal}`,
-    `frame-src ${cal}`,
-    "worker-src 'self' blob:",
-    "manifest-src 'self'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-  ].join('; ');
-}
-
-const YEAR = 'public, max-age=31536000, immutable';
-/** Not content-hashed (regenerated under the same name), so not immutable. */
-const MONTH = 'public, max-age=2592000, stale-while-revalidate=86400';
-
-interface Route {
-  src?: string;
-  headers?: Record<string, string>;
-  continue?: boolean;
-  handle?: string;
-}
-
-export function securityHeaders({ bookingUrl }: { bookingUrl?: string } = {}): AstroIntegration {
-  let root: URL;
+export function securityHeaders(): AstroIntegration {
   return {
     name: 'monolith-security-headers',
     hooks: {
-      'astro:config:done': ({ config }) => {
-        root = config.root;
-      },
-      'astro:build:done': ({ dir, logger }) => {
-        const configPath = fileURLToPath(new URL('.vercel/output/config.json', root));
-        if (!existsSync(configPath)) {
-          logger.warn('No .vercel/output/config.json: headers not written.');
-          return;
-        }
-        const pages = walk(fileURLToPath(dir)).map((file) => readFileSync(file, 'utf8'));
-        const hashes = inlineScriptHashes(pages);
-        const csp = contentSecurityPolicy(hashes, bookingUrl);
-
-        const routes: Route[] = [
-          {
-            // Every response. HTML (static and on demand) is revalidated on each request;
-            // the routes below give assets their long lifetimes.
-            src: '^/(.*)$',
-            headers: {
-              'content-security-policy': csp,
-              'strict-transport-security': HSTS,
-              'x-content-type-options': 'nosniff',
-              'referrer-policy': 'strict-origin-when-cross-origin',
-              'permissions-policy': PERMISSIONS_POLICY,
-              'x-frame-options': 'DENY',
-              'cross-origin-opener-policy': 'same-origin',
-              'cache-control': 'public, max-age=0, must-revalidate',
-            },
-            continue: true,
-          },
-          { src: '^/_astro/(.*)$', headers: { 'cache-control': YEAR }, continue: true },
-          { src: '^/fonts/(.*)$', headers: { 'cache-control': YEAR }, continue: true },
-          {
-            src: '^/(posters|textures|og|media|models)/(.*)$',
-            headers: { 'cache-control': MONTH },
-            continue: true,
-          },
-          {
-            src: '^/(favicon\\.ico|favicon\\.svg|apple-touch-icon\\.png|icon-[^/]+\\.png)$',
-            headers: { 'cache-control': MONTH },
-            continue: true,
-          },
-        ];
-
-        const config = JSON.parse(readFileSync(configPath, 'utf8')) as { routes?: Route[] };
-        // Ours replace any earlier run's and go first; the adapter's own /_astro rule
-        // (the same immutable header) stays where it was.
-        const own = new Set(routes.map((route) => route.src));
-        const rest = (config.routes ?? []).filter(
-          (route) => !(route.src && own.has(route.src) && route.continue),
+      'astro:build:done': async ({ dir, logger }) => {
+        const out = fileURLToPath(dir);
+        const bodies = new Set(
+          walk(out).flatMap((file) => inlineScripts(readFileSync(file, 'utf8'))),
         );
-        config.routes = [...routes, ...rest];
-        writeFileSync(configPath, JSON.stringify(config, null, '\t'));
-        logger.info(
-          `Security and caching headers written (${hashes.length} inline script hashes).`,
-        );
+        const hashes = await Promise.all([...bodies].map(scriptHash));
+        const security = Object.entries({
+          'Content-Security-Policy': contentSecurityPolicy(hashes),
+          ...SECURITY_HEADERS,
+        });
+        const rule = (path: string, headers: [string, string][]) =>
+          `${path}\n${headers.map(([key, value]) => `  ${key}: ${value}`).join('\n')}`;
+        // Cloudflare builds of any other branch are previews: keep them out of search.
+        const branch = process.env.WORKERS_CI_BRANCH ?? process.env.CF_PAGES_BRANCH;
+        const preview =
+          branch !== undefined && branch !== (process.env.PRODUCTION_BRANCH || 'main');
+        const file = [
+          '# Generated by src/integrations/security-headers.ts at build time. Do not edit.',
+          rule('/*', preview ? [...security, ['X-Robots-Tag', 'noindex']] : security),
+          rule('/_astro/*', [['Cache-Control', YEAR]]),
+          rule('/fonts/*', [['Cache-Control', YEAR]]),
+          ...['posters', 'textures', 'og', 'media', 'models'].map((folder) =>
+            rule(`/${folder}/*`, [['Cache-Control', MONTH]]),
+          ),
+          ...[
+            '/favicon.ico',
+            '/favicon.svg',
+            '/apple-touch-icon.png',
+            '/icon-192.png',
+            '/icon-512.png',
+            '/icon-maskable-512.png',
+          ].map((path) => rule(path, [['Cache-Control', MONTH]])),
+        ].join('\n\n');
+        writeFileSync(join(out, '_headers'), `${file}\n`);
+        logger.info(`_headers written (${hashes.length} inline script hashes).`);
       },
     },
   };

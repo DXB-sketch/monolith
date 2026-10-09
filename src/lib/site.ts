@@ -8,18 +8,13 @@ export const SITE = {
   name: 'Monolith Web Studio',
   shortName: 'Monolith',
   description:
-    'Monolith is a one-person web design and development studio in Wamuran, Queensland, making fast, accessible, award-level websites for businesses across South East Queensland.',
+    'Monolith is a one-person web design and development studio on Bribie Island, Queensland, making fast, accessible, award-level websites for businesses across South East Queensland.',
   locale: 'en-AU',
-  location: 'Wamuran, Queensland',
-  coordinates: '26.90°S · 152.82°E',
+  location: 'Bribie Island, Queensland',
+  coordinates: '27.07°S · 153.16°E',
   email: 'inquiry@monolithstudio.au',
   /** Shown in the footer once registered; left out while empty. */
   abn: '' as string,
-  /**
-   * A Cal.com booking page (e.g. https://cal.com/dexter-bell/intro). While
-   * empty, "Book a call" offers an email instead of the calendar.
-   */
-  bookingUrl: '' as string,
   founder: 'Dexter Bell',
   /** Real profiles only (they also feed the structured data's sameAs). Empty: no "Elsewhere" column. */
   socials: [] as Social[],

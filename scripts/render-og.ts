@@ -46,7 +46,7 @@ interface Card {
 const CARDS: Card[] = [
   {
     key: 'home',
-    eyebrow: 'Wamuran, Queensland',
+    eyebrow: 'Bribie Island, Queensland',
     title: 'Forged in fire.',
     accent: 'Built to stand.',
     scene: 'progress=0',

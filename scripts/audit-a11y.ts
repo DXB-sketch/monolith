@@ -3,8 +3,7 @@
  * Accessibility and CSP audit (Phase 5): axe on every page type, in every
  * scene mode, at desktop and phone sizes, plus the states that only appear
  * after interaction: the contact form's errors, its details step, its success
- * (Resend mocked), the no-JS error round trip, the booking fallback and the
- * open mobile menu. Every run also records Content-Security-Policy violations
+ * (Resend mocked), the no-JS error round trip and the open mobile menu. Every run also records Content-Security-Policy violations
  * and console errors, so it doubles as the "everything works under the CSP,
  * in every tier" check.
  *
@@ -66,10 +65,6 @@ const results: Result[] = [];
 async function audit(page: Page, label: string, csp: string[], errors: string[]) {
   const axe = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'])
-    // The canvas and poster are decorative and hidden from assistive tech;
-    // the stub analytics elements have no content.
-    .exclude('vercel-analytics')
-    .exclude('vercel-speed-insights')
     .analyze();
   const result: Result = {
     label,
@@ -237,18 +232,6 @@ try {
         await page.click('[data-brief-submit]');
         await page.waitForSelector('[data-brief-success]:not([hidden])', { timeout: 15_000 });
         await audit(page, `${label} /contact (sent)`, csp, errors);
-        await context.close();
-      }
-      {
-        const { context, page, csp, errors } = await open(browser, mode, size);
-        await page.goto(`${base}/contact${mode.query}`);
-        await settle(page, mode);
-        const book = page.locator('[data-book-open]:visible').first();
-        if (await book.isVisible()) {
-          await book.click();
-          await page.waitForTimeout(800);
-          await audit(page, `${label} /contact (book a call)`, csp, errors);
-        }
         await context.close();
       }
       if (size.name === 'phone') {

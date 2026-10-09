@@ -1,9 +1,10 @@
 import type { APIRoute } from 'astro';
 
 /**
- * Everything may be crawled except the dev and API routes. Vercel adds
- * `X-Robots-Tag: noindex` to every preview deployment itself, so only the
- * production domain is indexed.
+ * Everything may be crawled except the dev and API routes. Preview builds
+ * (other branches) send `X-Robots-Tag: noindex` on every page
+ * (src/integrations/security-headers.ts), and canonical URLs name the real
+ * domain, so only the production domain is indexed.
  */
 export const GET: APIRoute = ({ site }) =>
   new Response(

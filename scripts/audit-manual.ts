@@ -207,17 +207,16 @@ try {
       'keyboard contact form (radios, Next, Enter, send, focus to success)',
       `legendFocused=${legendFocused} sent=${sent} successFocused=${headingFocused}`,
     );
-    const book = page.locator('[data-brief-success] [data-book-open]');
-    if (await book.isVisible()) {
-      await book.focus();
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(800);
-      const fallback = await page
-        .locator('[data-brief-success] [data-book-status]')
-        .innerText()
-        .catch(() => '');
-      check(true, `keyboard Book a call (status: "${fallback.trim().slice(0, 60)}")`);
-    }
+    // "Arrange a call" is a mailto link: reachable by keyboard, with the studio address.
+    const call = page.locator('[data-brief-success] [data-book-link]');
+    await call.focus();
+    const focused = await call.evaluate((el) => el === document.activeElement);
+    const href = (await call.getAttribute('href')) ?? '';
+    check(
+      focused && href.startsWith('mailto:'),
+      'keyboard Arrange a call',
+      `focused=${focused} href=${href}`,
+    );
   });
 
   await withPage({ viewport: { width: 1440, height: 900 } }, async (page) => {
