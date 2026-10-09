@@ -7,11 +7,14 @@
  * are paused and stepped by hand. However long the software renderer takes to
  * draw a frame, the output is smooth and repeatable without a GPU.
  *
- *   screenshots   High tier: Home (each chapter and the dive), Work, a case
- *                 study, Services, Contact at 1600×1200 and 2560×1440; phone
- *                 (390×844, Lite, 3× pixels): the same pages
- *   recording     1920×1080, 60 fps: the home story, a page transition to a
- *                 case study and back, then the rest of the story and the dive;
+ *   screenshots   The 2D home page (Phase 6) at 1440×900 and 390×844 (3×): the
+ *                 hero, the stone mid-turn, and the whole page (reduced motion,
+ *                 so every section is in its final state). High tier: the 3D
+ *                 story at /potential (each chapter and the dive; the gate is
+ *                 passed first), Work, a case study, Services, Contact at
+ *                 1600×1200 and 2560×1440; phone (390×844, Lite, 3×): the same
+ *   recording     1920×1080, 60 fps: the /potential story, a page transition to
+ *                 a case study and back, then the rest of the story and the dive;
  *                 encoded to MP4 (H.264) and WebM (VP9)
  *
  * Usage: npm run build && npm run serve:prod   (another terminal)
@@ -120,13 +123,23 @@ async function open(viewport: { width: number; height: number }, scale = 1, mobi
 async function load(page: Page, path: string, tier: 'high' | 'lite') {
   await page.goto(`${base}${path}${path.includes('?') ? '&' : '?'}tier=${tier}&scale=1`);
   await page.waitForLoadState('networkidle');
+  // /potential: the gate passes (the tier is forced) and the story is entered.
+  if (path.startsWith('/potential') && (await page.locator('[data-gate]').isVisible())) {
+    await page.waitForFunction(
+      () => document.querySelector('[data-gate]')?.getAttribute('data-state') === 'passed',
+      null,
+      { timeout: 180_000 },
+    );
+    await page.click('[data-gate-enter]');
+    await page.waitForFunction(() => document.documentElement.hasAttribute('data-entered'));
+  }
   await page.waitForSelector('[data-scene-stage].is-live', { timeout: 120_000 });
   await page.waitForTimeout(12_000); // progressive layers, fades, reveals, the first glide
   await page.evaluate(() => (window as unknown as Controlled).__freeze());
   await frames(page, 30);
 }
 
-/** Scroll the home story to a chapter the way its own links do (Lenis, eased), then let it settle. */
+/** Scroll the story to a chapter the way its own links do (Lenis, eased), then let it settle. */
 async function toChapter(page: Page, id: string) {
   await page.evaluate((id) => {
     const link = document.querySelector<HTMLAnchorElement>(`a[href="#${id}"]`);
@@ -137,9 +150,64 @@ async function toChapter(page: Page, id: string) {
 
 // ── Screenshots ──────────────────────────────────────────────────────────
 
+/** The 2D home page: no scene, real time; the stone's frames load after `load`. */
+async function homeScreenshots(dir: string) {
+  for (const size of [
+    { name: '1440x900', viewport: { width: 1440, height: 900 }, scale: 1, mobile: false },
+    { name: 'phone-390x844', viewport: { width: 390, height: 844 }, scale: 3, mobile: true },
+  ]) {
+    const context = await browser.newContext({
+      viewport: size.viewport,
+      deviceScaleFactor: size.scale,
+      isMobile: size.mobile,
+      hasTouch: size.mobile,
+    });
+    const page = await context.newPage();
+    const save = (name: string, fullPage = false) =>
+      page.screenshot({
+        path: join(dir, `${size.name}-${name}.jpg`),
+        type: 'jpeg',
+        quality: 93,
+        fullPage,
+      });
+    await page.goto(`${base}/`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(4000); // fonts, the stone's frames (after load, at idle)
+    await save('home-hero');
+    // Halfway through the turn: 90° pinned on desktop, about 45° on a phone.
+    await page.evaluate(() => window.scrollTo({ top: innerHeight * 0.5, behavior: 'instant' }));
+    await page.waitForTimeout(1500);
+    await save('home-hero-turning');
+    console.log(`screenshots/${size.name}-home-hero(-turning).jpg`);
+    await context.close();
+
+    // The whole page with reduced motion: no pin, every section in its final state.
+    const still = await browser.newContext({
+      viewport: size.viewport,
+      deviceScaleFactor: size.scale,
+      isMobile: size.mobile,
+      hasTouch: size.mobile,
+      reducedMotion: 'reduce',
+    });
+    const full = await still.newPage();
+    await full.goto(`${base}/`);
+    await full.waitForLoadState('networkidle');
+    await full.waitForTimeout(1500);
+    await full.screenshot({
+      path: join(dir, `${size.name}-home-full.jpg`),
+      type: 'jpeg',
+      quality: 90,
+      fullPage: true,
+    });
+    console.log(`screenshots/${size.name}-home-full.jpg`);
+    await still.close();
+  }
+}
+
 async function screenshots() {
   const dir = join(out, 'screenshots');
   mkdirSync(dir, { recursive: true });
+  await homeScreenshots(dir);
   const sizes = [
     { name: '1600x1200', viewport: { width: 1600, height: 1200 }, tier: 'high' as const },
     { name: '2560x1440', viewport: { width: 2560, height: 1440 }, tier: 'high' as const },
@@ -166,16 +234,16 @@ async function screenshots() {
       console.log(`screenshots/${size.name}-${name}.jpg`);
     };
 
-    await load(page, '/', size.tier);
-    await shot('home-00-arrival');
+    await load(page, '/potential', size.tier);
+    await shot('potential-00-arrival');
     for (const [i, id] of ['face-i', 'face-ii', 'the-lab', 'the-core'].entries()) {
       await toChapter(page, id);
-      await shot(`home-0${i + 1}-${id}`);
+      await shot(`potential-0${i + 1}-${id}`);
     }
     // The dive: on past The Core, into the fissure.
     await page.evaluate(() => scrollBy({ top: innerHeight * 1.1, behavior: 'instant' }));
     await frames(page, 150);
-    await shot('home-05-the-dive');
+    await shot('potential-05-the-dive');
 
     for (const [path, name] of [
       ['/work', 'work'],
@@ -229,7 +297,7 @@ async function recording() {
       return el.getBoundingClientRect().top + scrollY;
     }, id);
 
-  await load(page, '/', 'high');
+  await load(page, '/potential', 'high');
   await hold(1.5);
   await scrollToY(await chapterY('face-i'), 3.5);
   await hold(1.2);

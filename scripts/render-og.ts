@@ -44,11 +44,19 @@ interface Card {
 }
 
 const CARDS: Card[] = [
+  // Phase 6: the 2D landing page's headline; /potential has the story's arrival.
   {
     key: 'home',
-    eyebrow: 'Bribie Island, Queensland',
-    title: 'Forged in fire.',
-    accent: 'Built to stand.',
+    eyebrow: 'Custom websites · South East Queensland',
+    title: 'Your business deserves better than',
+    accent: 'a template.',
+    scene: 'progress=0',
+  },
+  {
+    key: 'potential',
+    eyebrow: 'Full 3D · Optional',
+    title: 'See the',
+    accent: 'potential.',
     scene: 'progress=0',
   },
   { key: 'work', eyebrow: 'Work', title: 'Sites built', accent: 'to stand.', scene: 'view=work' },

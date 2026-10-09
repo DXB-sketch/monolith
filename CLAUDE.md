@@ -8,7 +8,7 @@ The portfolio and sales site for **Monolith Web Studio** ("Monolith"), a one-per
 
 The site has two jobs, and both matter equally:
 
-1. **Be a digital artwork.** A cinematic, scroll-driven 3D experience: a cracked obsidian monolith glowing with magma, standing in a volcanic dusk landscape. It must feel award-level (Awwwards Site of the Day standard) and unlike a template.
+1. **Be a digital artwork, fast everywhere.** Since Phase 6 the site is **2D by default**: an award-level 2D design (the "strata" landing page, `docs/ART_DIRECTION.md`) whose hero stone is pre-rendered from the real scene, so it is fast and convincing on every device. The cinematic, scroll-driven 3D experience (a cracked obsidian monolith glowing with magma in a volcanic dusk landscape) is kept intact as an **opt-in showcase, "See the potential", at `/potential`**, behind a device check. It must feel award-level (Awwwards Site of the Day standard) and unlike a template.
 2. **Convert visitors into clients.** Small and medium local businesses in South East Queensland must be able to understand what Monolith does, see the work, see pricing, and start a project within seconds, on any device, without needing the 3D experience at all.
 
 When these two goals conflict, never sacrifice clarity, speed or accessibility for spectacle. Find a design that does both.
@@ -36,7 +36,7 @@ When these two goals conflict, never sacrifice clarity, speed or accessibility f
 
 ```
 src/
-  pages/            index, work/, work/[slug], services, about, lab/, lab/[slug], contact, 404
+  pages/            index (2D landing), potential (the 3D story + gate), work/, work/[slug], services, about, lab/, lab/[slug], contact, 404
   layouts/          BaseLayout.astro (head, nav, footer, persistent canvas)
   components/       UI components (Nav, Hud, FaceCard, ServiceCard, ContactForm, etc.)
   scene/            all Three.js code — see SCENE_SPEC.md
@@ -59,6 +59,12 @@ public/
 - All colours come from CSS custom properties in `src/styles/tokens.css`. Never hardcode hex values in components. Shader colours are passed in as uniforms read from a single `scene/palette.ts` that mirrors the tokens.
 - Fonts: Sora (200, 300, 500) and JetBrains Mono (400, 500), self-hosted with `font-display: swap`.
 
+**Experience mode (Phase 6)**
+- Two modes sit above the quality tiers: `'2d'` (the default, everywhere) and `'3d'`. **No WebGL runs without the visitor's choice:** in 2D there is no GPU check, no probe worker, no scene chunk (not even prefetched), no fissure atlas and no canvas context.
+- 3D is entered only from the `/potential` gate, after it has benchmarked the device (Medium or High; thresholds in `src/scene/quality.ts`). The choice is stored in `localStorage` (`monolith:experience`), only ever as `'3d'` after a passed gate, and "Back to 2D" in the nav leaves it without a reload.
+- Reduced motion, save-data, no WebGL2 or a software renderer always mean 2D. `?tier=high|medium|lite` forces 3D for tests and captures; `?tier=poster` forces 2D.
+- The home page never imports Three.js. Its stone is an image sequence rendered from the real scene (`npm run orbit`), never drawn by hand.
+
 **Content and accessibility**
 - Every word of content lives in real, semantic HTML. The WebGL canvas is decorative: `aria-hidden="true"`, `pointer-events` managed explicitly, and never the only place information appears.
 - The site must be fully usable with JavaScript disabled, WebGL unavailable, or `prefers-reduced-motion: reduce`. In those cases show the static poster image of the scene and normal scrolling.
@@ -80,6 +86,7 @@ public/
 
 - Work one phase at a time, exactly as scoped in the phase prompt. Do not start the next phase.
 - Do not rebuild things that already work. If something from a previous phase must change, say why in the completion file.
+- After any change to the scene's look, re-render the 2D hero's orbit with `npm run orbit` (dev server running), as well as `npm run posters` and `npm run og`.
 - Run `npm run build` before finishing any phase. It must complete without errors or warnings you have not explained.
 - Commit at the end of each step with a clear message.
 - When a phase is finished, write `PHASE_N_COMPLETE.md` at the project root covering: what was built, deviations from the spec and why, known issues, performance numbers measured, and what the next phase needs to know.

@@ -22,6 +22,8 @@ Define these in `src/styles/tokens.css` and mirror them in `src/scene/palette.ts
 | `--ash` | #B5AAA0 | secondary text, labels |
 | `--ash-soft` | #CFC4B8 | body text on dark |
 | `--bone` | #EFE8E0 | primary text |
+| `--basalt-2` | #13110F | the second basalt tone of the 2D landing page's strata (Phase 6) |
+| `--rule-ember` | #3A2A20 | rules and borders between strata, panel and card borders (Phase 6) |
 
 Text on `--basalt` must meet WCAG AA. `--lava` is for accents, buttons (with `--basalt` text), and large display words only, never small body text.
 
@@ -50,7 +52,10 @@ Text on `--basalt` must meet WCAG AA. `--lava` is for accents, buttons (with `--
 - Cursor: optional custom cursor (a small ring) on desktop only, never replacing the native cursor on form fields.
 - `prefers-reduced-motion`: no camera movement, no shimmer, no parallax. Instant cuts and simple fades only. Show the static poster.
 
-## The scroll story (Home page)
+## The scroll story (`/potential`, "See the potential")
+
+Phases 1–5 built this as the home page. Since Phase 6 it is the opt-in 3D showcase at `/potential`, behind a device check, unchanged in look. The home page is the 2D landing below.
+
 
 | Chapter | Camera | Scene | Content (HTML over the scene) |
 |---|---|---|---|
@@ -61,6 +66,17 @@ Text on `--basalt` must meet WCAG AA. `--lava` is for accents, buttons (with `--
 | 04 — The Core | Descends and pushes into the brightest fissure, which fills the screen with molten light | Bloom and colour wash toward `--lava-hot` | Services summary (Ember / Flow / Eruption) and the final CTA "Let's make something that stands." |
 
 Below the scroll story: a normal, fast, plain section with services, a short about line, and the footer. This is the safety net for visitors who skip the experience.
+
+## 2D landing (strata)
+
+Since Phase 6 the home page is 2D by default: it sells the studio first and must still look award-level. No WebGL runs on it.
+
+- **Strata.** Sections alternate `--basalt` and `--basalt-2`, like layers of rock. Each section after the hero rides up over the one above by 40px. Its top edge is a jagged `clip-path` polygon (x in percentages, y in pixels across the 40px band), and the same points draw a 1.5px ember line along it (an inline SVG polyline, `preserveAspectRatio="none"`, `vector-effect="non-scaling-stroke"`), so line and edge always match. Every section has its own edge.
+- **The lava thread.** A 2px line in the left gutter (`left: clamp(18px, 3vw, 44px)`) from under the nav to the footer, dim (`--rule-ember`) with a lava fill that grows down it with the page's scroll. Each section has a 12px node on the thread that lights as the section arrives. Reduced motion and no-JS: fully lit. Decorative: `aria-hidden`.
+- **Layout.** Content within about 1320px, padded left (`clamp(48px, 7vw, 112px)`) to clear the thread. Panels and cards: a 1px `--rule-ember` border and a 6px radius (the landing's softer exception to the 2px panels elsewhere). Labels in JetBrains Mono, everything else Sora 200/300/500.
+- **The orbit hero.** The hero's stone is a 4:5 figure with thin corner ticks and a mono caption ("SCROLL TO TURN THE STONE", and a live angle readout). Scrolling turns the stone: 180° while the hero is pinned on desktop, 90° as it scrolls away on phones. Reduced motion, save-data and slow connections keep the first frame.
+- **The stone is always the real scene.** Every frame is rendered from the Three.js scene (`npm run orbit`: High tier, frozen clock, a capture-only orbit path), never drawn, painted or generated. Re-render it whenever the scene's look changes.
+- **Motion.** Transform, opacity and clip-path only: reveals (the shared reveal system), the thread, a slight tilt (at most 3°) and an ember glow under the pointer on the work panels (fine pointers only), and the Core's glow rising as it comes into view.
 
 ## The cursor and the stone
 

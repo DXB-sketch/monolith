@@ -1,6 +1,6 @@
 # PHASES — build roadmap
 
-Each phase ends with `npm run build` passing, a deploy preview on Vercel, and a `PHASE_N_COMPLETE.md` at the project root. Test on a real phone between phases before starting the next one.
+Each phase ends with `npm run build` passing, a deploy preview (Cloudflare since the Phase 5 addendum), and a `PHASE_N_COMPLETE.md` at the project root. Test on a real phone between phases before starting the next one.
 
 ## Phase 1 — Foundation and the hero scene
 Project setup, design tokens, base layout, navigation, footer, the plain-HTML home page content, quality tiers, poster fallback, and the procedural scene for Chapter 00 (monolith with fissures, terrain, sky, fog, a basic lava channel, embers, bloom). Static camera at the Chapter 00 position with gentle idle motion and pointer heat.
@@ -21,3 +21,11 @@ Lighthouse and WebPageTest passes on mobile and desktop, accessibility audit (ax
 - Lighthouse mobile: Performance 85+, Accessibility 100, Best Practices 100, SEO 100
 - No layout shift from the canvas or fonts (CLS < 0.05)
 - Fully usable with reduced motion, keyboard only, and with WebGL disabled
+
+## Phase 6 — 2D by default, 3D by choice
+The default experience everywhere becomes 2D: no WebGL runs unless the visitor asks for it (an experience mode, `'2d' | '3d'`, above the quality tiers). The home page is rebuilt as a 2D landing page that sells the studio (hero, work, why one person, process, packages, the core CTA) in the "strata" layout, with a hero stone pre-rendered from the real scene as an image sequence and scrubbed by scroll (`npm run orbit`). The 3D story moves, unchanged, to `/potential` as the opt-in showcase "See the potential", behind a gate that benchmarks the device first (Medium or High only). Entering 3D is remembered and keeps live page views on content pages; "Back to 2D" in the nav leaves it without a reload.
+
+### Targets
+- First visit to any content page or the home page: no scene chunk, no fissure atlas, no WebGL worker
+- Lighthouse mobile for `/`: Performance 95+, LCP < 2.5 s, CLS < 0.02, TBT < 150 ms; Accessibility, Best Practices and SEO 100
+- Orbit assets: desktop set ≤ 2.8 MB, phone set ≤ 1.0 MB, loaded only after `load`
