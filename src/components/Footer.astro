@@ -27,8 +27,9 @@ const year = new Date().getFullYear();
     <div class="footer__grid">
       <div class="footer__col">
         <h2 class="label">Contact</h2>
-        <!-- [STUDIO EMAIL] becomes a mailto link once the address is supplied. -->
-        <p class="footer__value">{SITE.email}</p>
+        <p class="footer__value">
+          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+        </p>
       </div>
 
       <div class="footer__col">
@@ -37,14 +38,20 @@ const year = new Date().getFullYear();
         <p class="footer__meta label">{SITE.coordinates}</p>
       </div>
 
-      <div class="footer__col">
-        <h2 class="label">Elsewhere</h2>
-        <ul class="footer__list">
-          {SITE.socials.map((social) => (
-            <li class="footer__value">{social.label}</li>
-          ))}
-        </ul>
-      </div>
+      {SITE.socials.length > 0 && (
+        <div class="footer__col">
+          <h2 class="label">Elsewhere</h2>
+          <ul class="footer__list">
+            {SITE.socials.map((social) => (
+              <li class="footer__value">
+                <a href={social.href} rel="noopener">
+                  {social.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <nav class="footer__col" aria-label="Footer">
         <h2 class="label">Site</h2>
@@ -70,7 +77,8 @@ const year = new Date().getFullYear();
     <div class="footer__base">
       <p class="wordmark footer__wordmark">Monolith</p>
       <p class="label">
-        © {year} {SITE.name} · ABN {SITE.abn}
+        © {year} {SITE.name}
+        {SITE.abn && ` · ABN ${SITE.abn}`}
       </p>
     </div>
   </div>

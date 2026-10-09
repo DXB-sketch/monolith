@@ -1,0 +1,14 @@
+// Cloudflare Workers config. The Astro adapter fills in the rest (entry point,
+// static assets binding, compatibility date) at build time.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "monolith",
+  // node:crypto for the contact form's signed token; process.env for its settings.
+  "compatibility_flags": ["nodejs_compat"],
+  // Secrets (set in the Cloudflare dashboard or with `wrangler secret put`):
+  //   RESEND_API_KEY, CONTACT_TO_EMAIL, CONTACT_FROM_EMAIL
+  // Pages live at /work/seqdvgc (no trailing slash), as in the canonical URLs
+  // and the sitemap: serve them there, and redirect /work/seqdvgc/ to it.
+  "assets": { "html_handling": "drop-trailing-slash" },
+  "observability": { "enabled": true },
+}

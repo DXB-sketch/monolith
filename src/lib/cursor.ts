@@ -8,7 +8,7 @@
  * - Over links and buttons the ring grows and warms toward lava; over project
  *   rows and cards it reads "View"; over the Lab demo's sliders, "Drag". The
  *   label is decorative (the whole cursor is aria-hidden).
- * - Never over text fields, selects, the Cal.com embed or any iframe: the
+ * - Never over text fields, selects or any iframe: the
  *   native cursor alone does that job.
  * - Transforms only, updated in requestAnimationFrame, and the loop stops as
  *   soon as the ring has caught up (or the pointer leaves the window).
@@ -19,8 +19,7 @@
  */
 type CursorState = 'idle' | 'link' | 'view' | 'drag' | 'hidden';
 
-const HIDE =
-  'input:not([type=range]), textarea, select, iframe, [data-book-embed], [contenteditable]';
+const HIDE = 'input:not([type=range]), textarea, select, iframe, [contenteditable]';
 const DRAG = 'input[type=range], [data-cursor="drag"]';
 const VIEW = '[data-cursor="view"]';
 const LINK = 'a, button, summary, label, [role="button"]';

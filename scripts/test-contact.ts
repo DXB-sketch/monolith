@@ -1,8 +1,8 @@
 #!/usr/bin/env -S npx tsx
 /**
- * Contact endpoint tests against the production build: the real Vercel
- * function handler from `.vercel/output`, with Resend replaced by a local
- * mock, so no email is ever sent.
+ * Contact endpoint tests against the production build: the real built Worker
+ * (`dist/server`), run locally in Cloudflare's runtime (workerd, via
+ * wrangler), with Resend replaced by a local mock, so no email is ever sent.
  *
  * Covers: valid sends (JSON and plain form), validation errors (and the no-JS
  * error round trip), the honeypot, fast and forged submissions, the rate
@@ -14,15 +14,13 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
+import { unstable_startWorker } from 'wrangler';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const entry = resolve(
-  root,
-  '.vercel/output/functions/_render.func/.vercel/output/server/entry.mjs',
-);
-if (!existsSync(entry)) {
+const config = resolve(root, 'dist/server/wrangler.json');
+if (!existsSync(config)) {
   console.error('No build found. Run `npm run build` first.');
   process.exit(1);
 }
@@ -59,29 +57,41 @@ const mock = createServer(async (req, res) => {
 await new Promise<void>((done) => mock.listen(0, '127.0.0.1', done));
 
 const API_KEY = 're_test_not_a_real_key_0123456789';
+const FROM = 'Monolith <enquiries@example.com>';
+const vars = {
+  RESEND_API_KEY: API_KEY,
+  CONTACT_TO_EMAIL: 'studio@example.com',
+  CONTACT_FROM_EMAIL: FROM,
+  RESEND_API_BASE: `http://127.0.0.1:${(mock.address() as AddressInfo).port}`,
+};
+// The token helpers below run here, in Node, and must sign with the Worker's key.
 process.env.RESEND_API_KEY = API_KEY;
-process.env.CONTACT_TO_EMAIL = 'studio@example.com';
-process.env.CONTACT_FROM_EMAIL = 'Monolith <enquiries@example.com>';
-process.env.RESEND_API_BASE = `http://127.0.0.1:${(mock.address() as AddressInfo).port}`;
 
-// Capture everything the function logs.
+// Capture everything printed while the Worker runs (its console output included).
 const logs: string[] = [];
-for (const level of ['log', 'warn', 'error', 'debug'] as const) {
-  const original = console[level].bind(console);
-  console[level] = (...args: unknown[]) => {
-    logs.push(args.map(String).join(' '));
-    original(...args);
-  };
+for (const stream of [process.stdout, process.stderr]) {
+  const write = stream.write.bind(stream) as (chunk: unknown, ...rest: unknown[]) => boolean;
+  stream.write = ((chunk: unknown, ...rest: unknown[]) => {
+    logs.push(String(chunk));
+    return write(chunk, ...rest);
+  }) as typeof stream.write;
 }
 
-const handler = (await import(pathToFileURL(entry).href)).default as {
-  fetch(request: Request): Promise<Response>;
-};
+const worker = await unstable_startWorker({
+  config,
+  bindings: Object.fromEntries(
+    Object.entries(vars).map(([name, value]) => [name, { type: 'secret_text', value }]),
+  ),
+  dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false, watch: false },
+});
+await worker.ready;
+// Real HTTP requests to the local server; redirects are what's being tested.
+const ORIGIN = (await worker.url).origin;
+const handler = { fetch: (request: Request) => fetch(request, { redirect: 'manual' }) };
 const { issueToken } = await import('../src/lib/contact-server.ts');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const ORIGIN = 'https://monolith.test';
 let ipCounter = 0;
 const freshIp = () => `203.0.113.${++ipCounter}`;
 const agedToken = () => issueToken(Date.now() - 5000);
@@ -117,7 +127,7 @@ function post(fields: Fields | string, opts: { json?: boolean; ip?: string; type
         'content-type':
           opts.type ?? (json ? 'application/json' : 'application/x-www-form-urlencoded'),
         accept: json ? 'application/json' : 'text/html',
-        'x-forwarded-for': opts.ip ?? freshIp(),
+        'cf-connecting-ip': opts.ip ?? freshIp(),
         origin: ORIGIN,
       },
       body,
@@ -161,7 +171,7 @@ await test('valid JSON submission sends one email', async () => {
   assert(email.auth === `Bearer ${API_KEY}`, 'bearer auth');
   assert(email.body.reply_to === 'enquirer@example.org', 'reply_to is the enquirer');
   assert(JSON.stringify(email.body.to) === '["studio@example.com"]', 'to is CONTACT_TO_EMAIL');
-  assert(email.body.from === process.env.CONTACT_FROM_EMAIL, 'from is CONTACT_FROM_EMAIL');
+  assert(email.body.from === FROM, 'from is CONTACT_FROM_EMAIL');
   assert(String(email.body.subject).includes('Test Person'), 'subject names the enquirer');
 });
 
@@ -346,6 +356,7 @@ await test('logs never contain message content, enquirer details or the API key'
   }
 });
 
+await worker.dispose();
 mock.close();
 console.info(failures ? `\n${failures} failed` : '\nall contact endpoint tests passed');
 process.exit(failures ? 1 : 0);

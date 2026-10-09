@@ -1,175 +1,168 @@
 # LAUNCH.md — Monolith Web Studio
 
-Your step-by-step checklist for putting the site live on its real domain. Everything
-here needs your accounts, your content or your decision, so none of it has been done for
-you. Work through the groups in order: each one depends on the one before.
+Your step-by-step checklist for putting the site live on **monolithstudio.au**, hosted on
+**Cloudflare**. Everything here needs your accounts or your decision, so none of it has
+been done for you. Work through the groups in order: each one depends on the one before.
 
-> **Important before you start:** once Phase 4 and 5 are merged into `main`, production
-> builds **refuse to deploy while any placeholder is left** (step 1). That's on purpose.
-> Until the content is in, Vercel keeps serving the last good production deployment, so
-> nothing breaks for visitors; the new deployment simply shows as failed with the list of
-> what's missing.
+> **How it's hosted.** The site is built by Astro with the Cloudflare adapter. Every page
+> except the contact page is static and served straight from Cloudflare's edge; the
+> contact page and its form endpoint (`/api/contact`) run in a small Cloudflare Worker.
+> Both are deployed together as one Worker called `monolith` (see `wrangler.jsonc`).
+> Cloudflare's free plan covers it.
+
+> **The placeholder gate.** Builds of `main` on Cloudflare **refuse to deploy while any
+> bracketed placeholder is left** (step 1). Builds of other branches only warn. Until a
+> build succeeds, Cloudflare keeps serving the last good version, so nothing breaks for
+> visitors.
 
 ---
 
 ## 1. Content
 
-The site still has bracketed placeholders like `[STUDIO EMAIL]` and `[$ PRICE]`. A
-production build fails until every one is replaced; a preview build only warns.
+All the required content is in. A strict build (`STRICT_CONTENT=1 npm run build`, the
+way `main` builds on Cloudflare) ends with `Placeholder gate: nothing left to supply.`
 
-**See the list:** run `npm run build` (or open any preview deployment's build log in
-Vercel). Near the end, the placeholder gate prints everything still missing, grouped by
-page, for example:
+Optional, whenever you're ready (none of these block a launch):
 
-```
-[WARN] [monolith-placeholder-report] 28 placeholders still to supply, on 14 pages:
-  /: [STUDIO EMAIL], [CONCEPT PROJECT], [SUBJECT TO BE CHOSEN], [$ PRICE], …
-  /about: [FOUNDER NAME], [FOUNDER PHOTO TO BE SUPPLIED], [FOUNDER BIO TO BE SUPPLIED], …
-  /contact (on demand): [REPLY TIME TO BE SUPPLIED], [$X], [$Y]
-  /contact/thanks: [REPLY TIME TO BE SUPPLIED], [CAL.COM BOOKING URL], …
-  /privacy: [REVIEW BEFORE LAUNCH], …
-  Site URL: [DOMAIN] (set PUBLIC_SITE_URL)
-```
-
-To check strictly on your own machine, the way production will: `STRICT_CONTENT=1 npm run build`.
-
-Where things live:
-
-- [ ] **Studio details** (`src/lib/site.ts`): studio email, founder name, ABN, social
-      links (only real profiles: they also feed the structured data), and the Cal.com
-      booking URL (`bookingUrl`, e.g. `https://cal.com/your-name/intro`).
-- [ ] **Prices** (`src/lib/site.ts` packages and `src/lib/contact-fields.ts` budget
-      ranges): every `[$ PRICE]`, `[$X]` and `[$Y]`.
-- [ ] **Packages and FAQ** (`src/lib/site.ts`): what's included in each package and the
-      FAQ answers. **Ongoing care and hosting** details: `src/pages/services.astro` and
-      the home page's Core chapter (`src/pages/index.astro`).
-- [ ] **Reply time** after a brief is sent (`src/components/ContactSuccess.astro`).
-- [ ] **About page** (`src/pages/about.astro`): founder photo and bio.
-- [ ] **Case studies** (`src/content/work/*.md`): the bracketed facts, real screenshots
-      and recordings (the image paths are in each file's front matter), and client quotes
-      only if they are real and you have permission.
-- [ ] **The concept project** (`src/content/work/concept.md`): choose the subject and
-      fill it in. If you haven't chosen one by launch, set `draft: true` in its front
-      matter: it is then left out of the build entirely (home page, Work, sitemap), and the
-      gate no longer counts it.
-- [ ] **Privacy page** (`src/pages/privacy.astro`): read it end to end. It describes
-      only what the site does today (Resend, Vercel's cookieless analytics, Cal.com,
-      session storage, the short-lived no-JS form cookie). It makes no claims about
-      certifications or legal compliance; if you want legal review, now is the time. Then
-      delete the `[REVIEW BEFORE LAUNCH]` line.
-- [ ] **Sharing images:** after changing any page headline or case study title, rerun
+- [ ] **ABN** (`abn` in `src/lib/site.ts`): once set, it appears in the footer.
+- [ ] **Your photo:** save it as `src/assets/founder.jpg` (or `.png`/`.webp`), portrait,
+      at least 1000 px wide. The About page picks it up automatically.
+- [ ] **Social links** (`socials` in `src/lib/site.ts`), only real profiles: they add a
+      footer column and feed the structured data.
+- [ ] **A concept project** (`src/content/work/concept.md`, currently `draft: true` and
+      left out of the build). Fill it in and remove `draft: true` when you have one; it
+      must stay clearly labelled as a concept.
+- [ ] **Sharing images:** after changing any page headline or case study title, run
       `npm run dev` and then `npm run og` (in another terminal) so the Open Graph images
-      match. The concept's image shows its placeholder title until you do.
-- [ ] Commit, push, and check a preview deployment: the build log should say
-      `Placeholder gate: nothing left to supply.` apart from `[DOMAIN]`, which step 2 sets.
+      match.
 
 ---
 
-## 2. Accounts and keys
+## 2. Cloudflare account and domain
 
-### Resend (the contact form's email)
+- [ ] Create a Cloudflare account (free plan) if you don't have one.
+- [ ] **Add the domain:** Cloudflare dashboard → **Add a domain** → `monolithstudio.au` →
+      Free plan. Cloudflare shows two nameservers. At the registrar where you bought the
+      domain, replace its nameservers with those two. Wait until Cloudflare marks the
+      domain **Active** (often within an hour; up to a day).
+- [ ] **SSL/TLS → Edge Certificates:** turn on **Always Use HTTPS**.
+- [ ] **Turn off the features that rewrite pages** (they would break the site's security
+      policy or its no-JavaScript links):
+  - **Speed → Optimization → Content Optimization → Rocket Loader:** Off.
+  - **Scrape Shield → Email Address Obfuscation:** Off. (It replaces the `mailto:`
+    links with a script-based version, which doesn't work without JavaScript.)
 
-- [ ] Create a Resend account and add your domain under **Domains**.
-- [ ] Add the DNS records Resend shows you (SPF and DKIM, usually TXT and MX/CNAME
-      records) at your domain registrar or DNS host. Wait until Resend marks the domain
-      **Verified**.
-- [ ] Create an API key with **sending access** only.
+### Email for `inquiry@monolithstudio.au`
 
-### Environment variables in Vercel
+Receiving and sending are separate:
 
-Project → **Settings → Environment Variables**. Add each one for **Production** (and
-Preview too if you want previews to send real emails; without them, a preview's form
-shows "The brief couldn't be sent just now" and nothing is emailed):
-
-| Name                 | Value                                                                    |
-| -------------------- | ------------------------------------------------------------------------ |
-| `RESEND_API_KEY`     | the key from Resend (keep it secret; it never reaches the browser)       |
-| `CONTACT_TO_EMAIL`   | where enquiries should arrive, e.g. your studio inbox                    |
-| `CONTACT_FROM_EMAIL` | the sender, on your verified domain, e.g. `Monolith <hello@yourdomain>`  |
-| `PUBLIC_SITE_URL`    | your final address, e.g. `https://yourdomain.com.au` (no trailing slash) |
-
-`PUBLIC_SITE_URL` sets canonical URLs, the sitemap, `robots.txt`, structured data and
-the Open Graph links. Until it's set, those use a placeholder origin and the gate lists
-`[DOMAIN]`.
-
-The Cal.com booking URL is not an environment variable: it lives in `src/lib/site.ts`
-(step 1). If it ever points at a custom domain or self-hosted Cal.com, the build adds that
-origin to the Content-Security-Policy automatically.
-
-### Analytics and Speed Insights
-
-- [ ] Project → **Analytics** → **Enable** (Web Analytics).
-- [ ] Project → **Speed Insights** → **Enable**.
-
-Both are cookieless, so no cookie banner is needed. The scripts are already in the site;
-until you enable them, they simply have nothing to report to. Custom events (below) may
-depend on your Vercel plan: check the Analytics page after enabling. If your plan doesn't
-include them, page views and Speed Insights still work and the events are ignored.
+- [ ] **Receiving (Cloudflare Email Routing):** your domain → **Email → Email Routing** →
+      enable it (it adds the MX and SPF records for you) → add a route from
+      `inquiry@monolithstudio.au` to your personal inbox, and confirm the email it sends.
+- [ ] **Sending the form's emails (Resend):** create a Resend account → **Domains** →
+      add `monolithstudio.au`. Resend lists DNS records (on a `send.` subdomain and a
+      DKIM `resend._domainkey` record); add each in Cloudflare → **DNS → Records**, with
+      the proxy **off** (grey cloud, "DNS only"). Wait until Resend marks the domain
+      **Verified**. They don't clash with Email Routing's records.
+- [ ] In Resend, create an API key with **sending access** only. Keep it for step 3.
 
 ---
 
-## 3. Domain
+## 3. Deploying
 
-- [ ] Buy the domain (or use one you own).
-- [ ] Vercel project → **Settings → Domains** → add the apex (`yourdomain.com.au`) and
-      `www.yourdomain.com.au`. Vercel shows the DNS records to add at your registrar.
-- [ ] Choose one as primary and set the other to **redirect** to it (Vercel offers this
-      when you add the second domain). Use the same one in `PUBLIC_SITE_URL`.
-- [ ] Wait for both to show **Valid Configuration** and for HTTPS certificates to be
-      issued (automatic, usually minutes).
-- [ ] Visit `http://yourdomain…` and check it redirects to `https://`.
-- [ ] Redeploy production after setting `PUBLIC_SITE_URL` (Deployments → … → Redeploy) so
-      the canonical links pick it up.
+The site's code is on the branch `claude/new-session-behumn`, in pull request
+[DXB-sketch/monolith#7](https://github.com/DXB-sketch/monolith/pull/7), not yet merged.
 
-**HSTS and `preload`.** The site already sends
+- [ ] **Stop Vercel first.** In Vercel → the monolith project → **Settings → Git** →
+      **Disconnect** (or delete the project). Once this PR is merged, Vercel can't build the
+      site any more (it now uses the Cloudflare adapter), so it would only report failed
+      builds. Keep the Vercel project around until Cloudflare is live if you want a fallback;
+      just disconnect Git.
+- [ ] **Merge PR #7** on GitHub (a normal merge commit is fine).
+- [ ] **Create the Worker from GitHub:** Cloudflare → **Workers & Pages** → **Create** →
+      **Import a repository** → connect GitHub and pick `DXB-sketch/monolith`. Settings:
+
+  | Setting           | Value                 |
+  | ----------------- | --------------------- |
+  | Project name      | `monolith`            |
+  | Production branch | `main`                |
+  | Build command     | `npm run build`       |
+  | Deploy command    | `npx wrangler deploy` |
+  | Root directory    | (leave empty)         |
+
+  The Node version comes from `.node-version` (22). Every push to `main` then builds and
+  deploys; pushes to other branches build a preview version with its own URL (the
+  placeholder gate only warns there, and previews are marked `noindex`).
+
+- [ ] **Secrets:** Workers & Pages → `monolith` → **Settings → Variables and Secrets** →
+      **Add**, type **Secret**, one for each:
+
+  | Name                 | Value                                                                                  |
+  | -------------------- | -------------------------------------------------------------------------------------- |
+  | `RESEND_API_KEY`     | the key from Resend (it never reaches the browser)                                     |
+  | `CONTACT_TO_EMAIL`   | `inquiry@monolithstudio.au` (or wherever you want briefs)                              |
+  | `CONTACT_FROM_EMAIL` | `Monolith Web Studio <website@monolithstudio.au>` (any address on the verified domain) |
+
+  Then redeploy (Deployments → the latest → **Retry build**, or push a commit) so the
+  Worker has them. Without them, the form shows "The brief couldn't be sent just now"
+  and nothing is emailed. Preview versions share the same secrets, so a test brief sent
+  from a preview is really emailed.
+
+- [ ] Watch the build log. It should end with `Placeholder gate: nothing left to supply.`
+      and `_headers written`, then the deploy. If it fails with `Placeholder gate: …`, read
+      the list and fix it in step 1.
+
+### Custom domain
+
+- [ ] Workers & Pages → `monolith` → **Settings → Domains & Routes** → **Add** →
+      **Custom domain** → `monolithstudio.au`. Cloudflare creates the DNS record and the
+      HTTPS certificate (a few minutes).
+- [ ] **`www` → the bare domain:** DNS → Records → add an `AAAA` record, name `www`,
+      address `100::`, proxied (orange cloud). Then **Rules → Redirect Rules** → create
+      from the template **"Redirect from WWW to Root"** (301, keep the path and query).
+- [ ] Check: `https://monolithstudio.au` shows the site; `http://monolithstudio.au` and
+      `https://www.monolithstudio.au/work` redirect to `https://monolithstudio.au/…`.
+- [ ] Optional: once the custom domain works, turn off the `workers.dev` address in the
+      same **Domains & Routes** panel, so the site has only one public address.
+      (Canonical links already point at monolithstudio.au either way.)
+
+### Analytics
+
+- [ ] Cloudflare → **Analytics & Logs → Web Analytics** → **Add a site** → choose
+      `monolithstudio.au` → **automatic setup** (Cloudflare adds its beacon to every page
+      at the edge; the site's security policy already allows it).
+
+It's cookieless, so no cookie banner is needed, and it doesn't record anything visitors
+type. See "Reading the analytics" in step 5.
+
+### Rolling back
+
+Workers & Pages → `monolith` → **Deployments** → find the last good version → **…** →
+**Rollback** (or "Deploy version"). The live site swaps back in seconds without touching
+git. Afterwards, fix the problem with a `git revert` of the bad commit on `main` so the
+next build is good too.
+
+**HSTS and `preload`.** The site sends
 `Strict-Transport-Security: max-age=63072000; includeSubDomains` (two years, every
 subdomain). It deliberately does **not** include `preload`. Preloading bakes HTTPS-only
 into browsers for your domain and **every subdomain**, and is slow to undo. Add it only
-once the site and any subdomains (mail, booking, anything later) have run on HTTPS for a
-few weeks: add `; preload` in `src/integrations/security-headers.ts`, deploy, then submit
-the domain at hstspreload.org.
+once the site and any subdomains have run on HTTPS for a few weeks: add `; preload` to
+`HSTS` in `src/lib/security-policy.ts`, deploy, then submit the domain at
+hstspreload.org.
 
 ---
 
-## 4. Git and deployment
+## 4. Final checks on real devices
 
-The Vercel project already deploys **production from `main`** (`monolith-git-main…` is
-the production alias), and the earlier issue (the working branch deploying as production)
-is resolved. Phases 4 and 5 are on the branch `claude/new-session-behumn`, in pull request
-[DXB-sketch/monolith#6](https://github.com/DXB-sketch/monolith/pull/6), and are not merged.
-
-- [ ] Do steps 1–3 first, so that the merge can actually deploy.
-- [ ] Confirm the production branch: Vercel project → **Settings → Git** →
-      **Production Branch** should read `main`.
-- [ ] Open PR #6 on GitHub, check its preview deployment (the link in the PR), then
-      **Merge** (a normal merge commit is fine). The branch is up to date with `main`, so
-      there are no conflicts to resolve.
-- [ ] Watch the production deployment in Vercel. If the build fails with
-      `Placeholder gate: …`, read the list and go back to step 1. The live site doesn't
-      change until a production build succeeds.
-
-**Rolling back.** Vercel project → **Deployments** → find the last good production
-deployment → **…** → **Promote to Production** (or "Instant Rollback"). That swaps the
-live site back in seconds without touching git. Afterwards, fix the problem with a
-`git revert` of the bad commit on `main` so the next deployment is good too.
-
-**Node version.** The Vercel project is set to Node 24.x and `package.json` asks for
-22.x; builds work on both. If Vercel ever warns about the mismatch, set the project's
-Node.js version (Settings → General) to 22.x to match.
-
----
-
-## 5. Final checks on real devices
-
-- [ ] **Frame rate:** open `https://yourdomain/?fps` on your desktop, laptop and phone.
+- [ ] **Frame rate:** open `https://monolithstudio.au/?fps` on your desktop, laptop and phone.
       The overlay shows the tier each device gets and the frame rate. Desktop/laptop
       should hold about 60 fps on High or Medium; a mid-range phone at least 30 fps on
       Lite. Scroll the whole home story and open a case study.
 - [ ] **A real contact form submission,** end to end, from your phone, using an address
       you own. Check that the email arrives at `CONTACT_TO_EMAIL`, that replying goes to
       the address you entered, and that the success message shows.
-- [ ] **Book a call:** tap "Book a call" on the contact page; the Cal.com calendar should
-      open inline (or the plain link, if Cal.com is blocked).
+- [ ] **Arrange a call:** tap "Arrange a call" on the contact page; your email app should
+      open a new message to `inquiry@monolithstudio.au`.
 - [ ] **The Lab demo:** open `/lab/light-through-stone` on your laptop. The live shader
       should replace the still, and both sliders should respond to dragging and to the
       arrow keys. (It couldn't be tried during the build: it deliberately refuses
@@ -198,7 +191,7 @@ confusing or out of order.
 
 **Home page (the story):**
 
-1. Load the home page. You should hear the page title, "Monolith Web Studio — Wamuran,
+1. Load the home page. You should hear the page title, "Monolith Web Studio — Bribie Island,
    Queensland", and nothing about a canvas or animation.
 2. The first control is "Skip to content". Activate it: focus moves to the main content.
 3. Move by headings: the hero headline, then each chapter (Arrival, Face I, Face II, The
@@ -228,19 +221,19 @@ confusing or out of order.
    Each field's label is read when it receives focus.
 5. Fill in your own details and send. "Sending…" then the success heading should be
    read.
-6. On the success message, "Book a call" should be reachable and named.
+6. On the success message, "Arrange a call" should be reachable and named.
 
 **Mobile menu (iPhone only):** open the menu; it should say "expanded", list the pages,
 and closing it should return focus to the menu button.
 
 ---
 
-## 6. After launch
+## 5. After launch
 
 - [ ] **Google Search Console:** add the domain property (it'll ask for a DNS TXT
-      record), then **Sitemaps** → submit `https://yourdomain/sitemap-index.xml`. Check
+      record), then **Sitemaps** → submit `https://monolithstudio.au/sitemap-index.xml`. Check
       **Pages** after a few days for anything not indexed.
-- [ ] **Google Business Profile:** set it up as a service-area business (Wamuran, serving
+- [ ] **Google Business Profile:** set it up as a service-area business (Bribie Island, serving
       Moreton Bay, Sunshine Coast and Brisbane) **without a public street address**, using
       the same name, website and email as the site. Add the profile link to `socials` in
       `src/lib/site.ts`: that also adds it to the structured data's `sameAs`.
@@ -249,30 +242,23 @@ and closing it should return focus to the menu button.
 
 ### Reading the analytics
 
-Vercel project → **Analytics**. The top of the page shows visitors, page views, top
-pages, referrers, countries and devices. Scroll to **Events** for the custom events; click
-an event to break it down by its properties.
+Cloudflare → **Analytics & Logs → Web Analytics** → `monolithstudio.au`. It shows
+visits, page views, top pages, referrers, countries, browsers and devices, and real
+visitors' **Core Web Vitals** (LCP, INP, CLS) by page. Green is good. If mobile LCP is
+amber or red on a page, that page's largest image or headline is arriving late.
 
-| Event            | Properties                                                                                                                                                                                                                      | What it tells you                                                                                                                                                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `scene_tier`     | `tier` (high, medium, lite, poster, pending), `live`, and `reason` when poster                                                                                                                                                  | What visitors actually get. A high share of `poster` with `reason: weak-gpu` or `software-renderer` means many visitors see the still image; `reduced-motion` and `save-data` are visitors' own settings. `pending` means they left before the GPU check finished. |
-| `story_progress` | `chapter` (arrival … the-core, the-dive), `index` 0–5                                                                                                                                                                           | How far people get through the home story (sent once, when they leave it). If most stop at `arrival`, the opening isn't pulling them in.                                                                                                                           |
-| `cta_click`      | `button` (start_project, book_call), `placement` (`nav`, `footer`, or the section it sits in: `arrival` is the home hero, `plain` the home page's closing call to action, `next-step` the closing block on other pages), `page` | Which calls to action work, and where.                                                                                                                                                                                                                             |
-| `contact_step`   | `step` 2–5, `name`                                                                                                                                                                                                              | How far people get through the form. A big drop at one step points at that question.                                                                                                                                                                               |
-| `contact_submit` | (none)                                                                                                                                                                                                                          | Briefs sent. Compare with `contact_step` 5 for the last-step drop-off.                                                                                                                                                                                             |
-| `sound_on`       | `page`                                                                                                                                                                                                                          | How many people try the sound.                                                                                                                                                                                                                                     |
-| `intro_skipped`  | (none)                                                                                                                                                                                                                          | How often the opening intro is cut short by a tap or key.                                                                                                                                                                                                          |
-
-None of these include anything a visitor typed.
-
-**Speed Insights** (its own tab) shows real visitors' Core Web Vitals (LCP, INP, CLS) by
-page and device. Green is good. If mobile LCP is amber or red on a page, that page's
-largest image or headline is arriving late.
+Cloudflare Web Analytics has no custom events, so the finer signals the site measures
+(which scene tier visitors get, how far they scroll the story, which calls to action they
+use, where they leave the contact form) are not reported anywhere yet. The site still
+raises them in the page as `monolith:analytics` events (`src/lib/analytics.ts` lists them
+all, and none includes anything a visitor typed), so a privacy-friendly analytics service
+with custom events can be connected later in one place, with a matching update to the
+privacy page and the security policy.
 
 ### Award submissions
 
 Submit only after the site is live on its real domain with all real content, and you're
-happy with step 5. Each site judges design, usability, creativity and content; each
+happy with step 4. Each site judges design, usability, creativity and content; each
 charges a submission fee (check the current fee on the submission page).
 
 What's ready in `submission/` (see its README): desktop screenshots at 1600×1200 and

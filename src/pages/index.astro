@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Hud from '../components/Hud.astro';
 import FaceCard from '../components/FaceCard.astro';
 import ServiceCard from '../components/ServiceCard.astro';
-import { SERVICES, SITE, CTA } from '../lib/site';
+import { SERVICES, SITE, CTA, CARE } from '../lib/site';
 import { getWork, toProject, published } from '../lib/work';
 import { studio } from '../lib/structured-data';
 import { getCollection } from 'astro:content';
@@ -124,9 +124,11 @@ const lab = (await getCollection('lab', published)).sort(
             </span>
           </a>
         </div>
-        <div class="chapter__block" data-reveal>
-          {concept && <FaceCard project={concept} />}
-        </div>
+        {concept && (
+          <div class="chapter__block" data-reveal>
+            <FaceCard project={concept} />
+          </div>
+        )}
       </div>
     </section>
 
@@ -210,15 +212,15 @@ const lab = (await getCollection('lab', published)).sort(
               </div>
             ))}
           </dl>
-          <p>Ongoing care and hosting: [DETAILS TO BE SUPPLIED]</p>
+          <p>Ongoing care and hosting: {CARE.price}.</p>
         </div>
 
         <div class="plain__col">
           <h3 class="label">Who I am</h3>
           <p>
-            I’m {SITE.founder}, a designer and developer working on my own from Wamuran, at the foot
-            of the Glasshouse Mountains. You talk to the person who makes your site, from the first
-            call to launch day and after.
+            I’m {SITE.founder}, a designer and developer working on my own from Bribie Island, in
+            Moreton Bay. You talk to the person who makes your site, from the first call to launch
+            day and after.
           </p>
           <p>
             <a href="/about">More about me and how I work</a>
@@ -231,7 +233,9 @@ const lab = (await getCollection('lab', published)).sort(
             Tell me what you need and roughly what you’d like to spend. I’ll come back with honest
             advice, even if that’s “you don’t need me yet”.
           </p>
-          <p>Email: {SITE.email}</p>
+          <p>
+            Email: <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+          </p>
           <a class="btn btn--primary" href={CTA.href} data-magnetic>
             {CTA.label}
             <span class="btn__arrow" aria-hidden="true">

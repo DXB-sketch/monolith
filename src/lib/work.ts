@@ -12,7 +12,7 @@ export interface Project {
   title: string;
   client: string;
   clientType: string;
-  year: string;
+  year?: string;
   summary: string;
   liveUrl?: string;
   isConcept: boolean;

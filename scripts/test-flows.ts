@@ -11,7 +11,7 @@
  *   contact      the whole brief, sent (Resend mocked by serve:prod)
  *   lab          the demo (forced ?tier=lite) runs and its controls respond; where
  *                the demo itself declines (it refuses software renderers), the still
- *   analytics    the events queued along the way, and that none of them holds
+ *   analytics    the events fired along the way, and that none of them holds
  *                anything typed into the form
  *
  * Each flow runs at desktop and phone sizes, under the production headers
@@ -66,6 +66,13 @@ async function run(
   contextOptions = {},
 ) {
   const context = await browser.newContext({ ...size, ...contextOptions });
+  // Record the site's analytics events (src/lib/analytics.ts) as they fire.
+  await context.addInitScript(() => {
+    const log: unknown[] = ((window as unknown as { __events: unknown[] }).__events = []);
+    document.addEventListener('monolith:analytics', (event) =>
+      log.push((event as CustomEvent).detail),
+    );
+  });
   const page = await context.newPage();
   const problems = watch(page);
   const label = `${flow} (${size.name})`;
@@ -92,12 +99,12 @@ const tierOf = (page: Page) =>
     live: Boolean(document.querySelector('[data-scene-stage].is-live')),
   }));
 
-/** Queued analytics events (the stub script never sends them). */
+/** The analytics events fired on the page so far (recorded by the init script). */
 const events = (page: Page) =>
-  page.evaluate(() =>
-    ((window as unknown as { vaq?: unknown[][] }).vaq ?? [])
-      .filter((call) => call[0] === 'event')
-      .map((call) => call[1] as { name: string; data?: Record<string, unknown> }),
+  page.evaluate(
+    () =>
+      (window as unknown as { __events?: { name: string; data?: Record<string, unknown> }[] })
+        .__events ?? [],
   );
 
 const browser = await engine.launch(

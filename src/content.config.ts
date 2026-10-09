@@ -21,7 +21,8 @@ const work = defineCollection({
       client: z.string(),
       /** e.g. "Sporting club", "Musician". */
       clientType: z.string(),
-      year,
+      /** Left out of the page until supplied. */
+      year: year.optional(),
       /** The live site; omitted for concepts. Opens in the same tab. */
       liveUrl: z.url().optional(),
       /** One line. */
@@ -55,7 +56,8 @@ const work = defineCollection({
           ]),
         )
         .optional(),
-      challenge: z.string(),
+      /** The section is omitted when absent. */
+      challenge: z.string().optional(),
       decisions: z
         .array(
           z.object({

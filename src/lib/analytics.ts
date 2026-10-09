@@ -1,28 +1,36 @@
 /**
- * Custom analytics events (Vercel Web Analytics: cookieless, no consent banner).
- *
- * A handful of events that tell the owner what real visitors get and do:
+ * Custom analytics events: a handful that would tell the owner what real
+ * visitors get and do.
  *
  *   scene_tier      the tier the visit settled on, and why when it's the poster
  *   story_progress  the furthest home chapter reached (once, when leaving the story)
- *   cta_click       which "Start a project" / "Book a call" button, on which page
+ *   cta_click       which "Start a project" / "Arrange a call" button, on which page
  *   contact_step    a brief step reached for the first time
  *   contact_submit  a brief sent successfully
  *   sound_on        the ambient sound switched on
  *   intro_skipped   the first-visit intro opened early by an input
  *
+ * Nothing is sent anywhere yet: Cloudflare Web Analytics (page views and Core
+ * Web Vitals, cookieless, enabled in the Cloudflare dashboard) has no custom
+ * events. Each event is dispatched on `document` as a `monolith:analytics`
+ * CustomEvent ({ name, data }), so a provider can be added here in one place,
+ * and tests can check them.
+ *
  * Never personal data: no form values, no free text, no GPU strings, no query
- * strings. Events are queued by the analytics script and sent by it
- * (off the main path); nothing here waits on them. Without the script (local,
- * analytics off in Vercel, blocked) every call is a no-op.
+ * strings. Nothing here waits on anything.
  */
-import { track as vercelTrack } from '@vercel/analytics';
-
 type Value = string | number | boolean;
+
+export interface AnalyticsEvent {
+  name: string;
+  data?: Record<string, Value>;
+}
 
 export function track(name: string, data?: Record<string, Value>) {
   try {
-    vercelTrack(name, data);
+    document.dispatchEvent(
+      new CustomEvent<AnalyticsEvent>('monolith:analytics', { detail: { name, data } }),
+    );
   } catch {
     // Analytics must never break the page.
   }
@@ -52,7 +60,7 @@ export function posterReason(reason: string): string {
 }
 
 /**
- * "Start a project" (the buttons, not plain "Contact" links) and "Book a
+ * "Start a project" (the buttons, not plain "Contact" links) and "Arrange a
  * call", wherever they are: one delegated listener, so no button needs
  * wiring. `placement` says which one: the nav, the footer, or the section it
  * sits in (its id, else its class: `arrival`, `next-step`).
@@ -62,10 +70,10 @@ export function initCtaTracking() {
     'click',
     (event) => {
       const target = event.target as Element | null;
-      const el = target?.closest?.('a[href], [data-book-open]');
+      const el = target?.closest?.('a[href]');
       if (!el) return;
       let button: string | null = null;
-      if (el.matches('[data-book-open], [data-book-link]')) button = 'book_call';
+      if (el.matches('[data-book-link]')) button = 'arrange_call';
       else if (
         el instanceof HTMLAnchorElement &&
         el.classList.contains('btn') &&

@@ -1,9 +1,7 @@
 ---
 /**
- * Privacy (Phase 5). Plain English, and only what the site actually does. Flagged
- * for the owner to review before launch: the flag is a bracketed placeholder,
- * so the placeholder gate keeps production builds from shipping until it's
- * removed. No certifications or legal compliance are claimed.
+ * Privacy (Phase 5). Plain English, and only what the site actually does
+ * (reviewed by the owner). No certifications or legal compliance are claimed.
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageIntro from '../components/PageIntro.astro';
@@ -25,8 +23,6 @@ import { SITE } from '../lib/site';
 
   <section class="privacy" aria-label="Privacy details">
     <div class="container privacy__inner" data-reveal>
-      <p class="privacy__review label">[REVIEW BEFORE LAUNCH]</p>
-
       <h2 class="heading">The contact form</h2>
       <p>
         When you send a project brief, what you enter (your name, email, business, phone if you give
@@ -47,23 +43,21 @@ import { SITE } from '../lib/site';
 
       <h2 class="heading">Analytics and performance</h2>
       <p>
-        The site uses Vercel Web Analytics and Speed Insights, which don’t use cookies. They record
-        things like which pages are visited, the referring site, the country, the kind of device and
-        browser, and how quickly pages load. On top of that, the site sends a few anonymous events:
-        which version of the 3D scene your device could show, how far through the home page story
-        you scrolled, which “Start a project” or “Book a call” button you used, how far through the
-        contact form you got and whether it was sent, and whether you turned the sound on or skipped
-        the intro. None of these include anything you type.
+        The site uses Cloudflare Web Analytics, which doesn’t use cookies. It records things like
+        which pages are visited, the referring site, the country, the kind of device and browser,
+        and how quickly pages load. It doesn’t record anything you type.
       </p>
 
-      <h2 class="heading">Booking a call</h2>
+      <h2 class="heading">Arranging a call</h2>
       <p>
-        Booking a call is handled by Cal.com. Nothing from Cal.com loads until you choose “Book a
-        call”, and what you enter there is covered by Cal.com’s own privacy policy.
+        Calls are arranged by email, so what you send is handled the same way as any other email to
+        me.
       </p>
 
       <h2 class="heading">Hosting</h2>
-      <p>The site is hosted by Vercel, whose servers handle every request, as any web host’s do.</p>
+      <p>
+        The site is hosted by Cloudflare, whose servers handle every request, as any web host’s do.
+      </p>
 
       <h2 class="heading">Your details, your call</h2>
       <p>To ask what I hold about you, or to have it deleted, email me at {SITE.email}.</p>
@@ -89,9 +83,5 @@ import { SITE } from '../lib/site';
 
   .privacy__inner .heading {
     margin-top: var(--space-l);
-  }
-
-  .privacy__inner .privacy__review {
-    color: var(--lava-hot);
   }
 </style>

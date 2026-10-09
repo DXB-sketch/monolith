@@ -10,11 +10,11 @@ import type { WorkEntry } from './work';
 
 const absolute = (path: string, site: URL) => new URL(path, site).href.replace(/(.)\/$/, '$1');
 
-/** The studio: a professional service in Wamuran, serving South East Queensland. */
+/** The studio: a professional service on Bribie Island, serving South East Queensland. */
 export function studio(site: URL) {
   const sameAs = SITE.socials
-    .map((social) => ('href' in social ? (social as { href?: string }).href : undefined))
-    .filter((href): href is string => typeof href === 'string' && /^https:\/\//.test(href));
+    .map((social) => social.href)
+    .filter((href) => /^https:\/\//.test(href));
   return {
     '@context': 'https://schema.org',
     '@type': 'ProfessionalService',
@@ -27,7 +27,7 @@ export function studio(site: URL) {
     email: SITE.email,
     address: {
       '@type': 'PostalAddress',
-      addressLocality: 'Wamuran',
+      addressLocality: 'Bribie Island',
       addressRegion: 'QLD',
       addressCountry: 'AU',
     },
@@ -71,7 +71,7 @@ export function caseStudy(entry: WorkEntry, imagePath: string, site: URL) {
     url: absolute(`/work/${entry.id}`, site),
     image: absolute(imagePath, site),
     // Only a real year: a bracketed placeholder is left out rather than published.
-    ...(/^\d{4}$/.test(year) ? { dateCreated: year } : {}),
+    ...(year && /^\d{4}$/.test(year) ? { dateCreated: year } : {}),
     creator: {
       '@type': 'ProfessionalService',
       '@id': `${absolute('/', site)}/#studio`,
