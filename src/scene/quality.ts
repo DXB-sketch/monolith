@@ -319,6 +319,27 @@ export const GATE_P95_MS = 34;
 /** The tiers the showcase is offered at. Lite is not: it's only worth showing at Medium or High. */
 export const GATE_TIERS: readonly SceneTier[] = ['high', 'medium'];
 
+export interface FrameVerdict {
+  pass: boolean;
+  /** Median and 95th-percentile frame time, ms. */
+  median: number;
+  p95: number;
+  /** The GPU's own frame time where timer queries exist (it can't hide behind vsync), ms. */
+  gpu: number | null;
+  frames: number;
+}
+
+/** The gate's verdict on measured frame intervals (and the GPU's frame time, if known). */
+export function judgeFrames(samples: number[], gpu: number | null): FrameVerdict {
+  const sorted = [...samples].sort((a, b) => a - b);
+  const at = (q: number) => sorted[Math.round(q * (sorted.length - 1))] ?? Infinity;
+  const median = at(0.5);
+  const p95 = at(0.95);
+  const pass =
+    sorted.length >= 10 && Math.max(median, gpu ?? 0) <= GATE_MEDIAN_MS && p95 <= GATE_P95_MS;
+  return { pass, median, p95, gpu, frames: sorted.length };
+}
+
 /** The visitor's stored choice of 3D. Storage unavailable: 2D, every page load. */
 export function storedExperience(): Experience {
   try {
