@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "astro": "astro",
     "posters": "node scripts/render-posters.mjs",
+    "orbit": "tsx scripts/render-orbit.ts",
     "bake": "tsx scripts/bake-fissures.ts",
     "placeholders": "tsx scripts/make-placeholders.ts",
     "icons": "tsx scripts/make-icons.ts",

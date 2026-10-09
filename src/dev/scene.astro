@@ -12,6 +12,9 @@
  *   &hide=lava,embers&nopost      isolate objects, skip post-processing
  *   &nohaze                       no heat haze (High), to measure its cost
  *   &scale=0.5                    hold a resolution scale (default 1)
+ *   &orbit                        with capture: the capture-only orbit path (Phase 6,
+ *                                 scripts/render-orbit.ts); window.__orbitFrame(time, degrees)
+ *                                 renders one frame of it
  * window.__gpu() returns per-layer GPU milliseconds (EXT_disjoint_timer_query_webgl2).
  */
 import '../styles/global.css';
@@ -63,6 +66,7 @@ import '../styles/global.css';
               time: Number(captureAt),
               progress: Number(params.get('progress') ?? 0),
               view: pageView,
+              orbit: params.has('orbit') ? 0 : undefined,
             }
           : undefined,
         onFirstFrame: () => {
@@ -72,6 +76,20 @@ import '../styles/global.css';
       })
         .then((scene) => {
           (window as unknown as { __gpu?: unknown }).__gpu = () => scene.gpuTimings();
+          // The orbit sequence: one frame per call, drawn on the next animation frame.
+          (window as unknown as { __orbitFrame?: unknown }).__orbitFrame = (
+            time: number,
+            degrees: number,
+          ) =>
+            new Promise<void>((done) => {
+              scene.captureFrame(time, degrees);
+              requestAnimationFrame(() => requestAnimationFrame(() => done()));
+            });
+          // Orbit capture draws only on request: no loop, so no first-frame callback either.
+          if (params.has('orbit') && captureAt) {
+            w.__sceneReady = true;
+            return;
+          }
           if (pointer && pointer.length === 2) scene.setPointer(pointer[0]!, pointer[1]!);
           if (pageView && !captureAt) scene.setView(pageView, { immediate: true });
           scene.resume();

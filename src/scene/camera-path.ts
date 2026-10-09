@@ -198,7 +198,7 @@ export const VIEW_FRAMES: Record<PageView, ChapterFrame> = {
  */
 export const ORBIT_CAPTURE = {
   start: FACE_ANGLE.front - 0.2,
-  radius: 46,
+  radius: 42.5,
   height: 3.2,
   targetHeight: 7.2,
   fov: 30,
