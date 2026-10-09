@@ -237,6 +237,7 @@ The manifest is `orbit.json`. `index.astro` imports it at build time, so the fra
 | Scene | — | The benchmark hooks and the capture-only orbit (Step 2). Nothing a visitor sees in the 3D story changed. |
 | `render-posters.mjs` | Default 30 s screenshot timeout | 300 s: the 1080×2160 portrait poster on SwiftShader took longer than 30 s on this machine. |
 | Submission README | Home chapters | `/potential` chapters, plus the 2D home screenshots. |
+| `capture-submission.ts` | Story on `/`, default 30 s screenshot timeout | Story on `/potential` (passes the gate first), 2D home screenshots, 300 s screenshot timeout (the 2560×1440 dive frame exceeded 30 s on SwiftShader here), and a `SIZES=` filter to re-render only some sets. The old `…-home-0x` story stills were removed; the same shots are now `…-potential-0x`. |
 
 ---
 
@@ -269,15 +270,39 @@ Three runs each, median, against `npm run serve:prod` (brotli, production header
 | | Perf | A11y | BP | SEO | LCP | TBT | CLS |
 |---|---|---|---|---|---|---|---|
 | **Before**, mobile (Phase 5 home: the story) | 72 | 100 | 100 | 100 | 1.88 s | 1,544 ms | 0.014 |
-| **After**, mobile (2D landing page) | **98** | **100** | **100** | **100** | **2.05 s** | **63 ms** | **0.012** |
+| **After**, mobile (2D landing page) | **99** | **100** | **100** | **100** | **2.01 s** | **5 ms** | **0** |
 | Before, desktop | 87 | 100 | 100 | 100 | 0.70 s | 291 ms | 0.008 |
-| After, desktop | LH_D_HOME |
+| **After**, desktop | **100** | **100** | **100** | **100** | **0.49 s** | **0 ms** | **0.001** |
 
-The first "after" build scored 87 (TBT 458 ms). The orbit decoded every arriving frame in one microtask burst, a 130 ms task (×4 in Lighthouse's CPU model). With the frames decoded one per idle callback and no redundant ScrollTrigger refreshes, it scores 98. Without the orbit at all it scored 98 with 10 ms of TBT, so the orbit now costs almost nothing.
+Targets for `/` (Performance ≥ 95, LCP < 2.5 s, CLS < 0.02, TBT < 150 ms, the rest 100) are all met. Three fixes got there:
+
+1. **TBT.** The first "after" build scored 87 (TBT 458 ms). The orbit decoded every arriving frame in one microtask burst, a 130 ms task (×4 in Lighthouse's CPU model). Frames are now decoded one per idle callback, with no redundant ScrollTrigger refreshes: 98. Without the orbit at all it scored 98 with 10 ms of TBT, so the orbit now costs almost nothing.
+2. **Desktop CLS (0.036).** The next stratum's jagged edge peeked into the first view, then the pin's spacing pushed it down. The hero is now a viewport plus the 40px overlap tall: 0.001.
+3. **Font-swap CLS.** The hero recentred when Sora 500 (the h1's accent phrase) arrived late, so the home page now preloads it: mobile CLS 0.012 → 0. LCP is unaffected (2.05 → 2.01 s).
 
 ### Lighthouse, other pages (mobile, after)
 
-LH_TABLE
+Three runs each, median, on the final build (except `/`, above).
+
+| Page | Perf | A11y / BP / SEO | LCP | TBT | CLS | Notes |
+|---|---|---|---|---|---|---|
+| `/potential` | 71 | 100 / 100 / 100 | 1.96 s | 2,049 ms | 0.001 | The gate starts the device check on arrival: the scene chunk, compile and the benchmark run inside Lighthouse's window. Expected for the opt-in showcase, and no budget applies. Desktop: 83, TBT 366 ms. |
+| `/work` | 98 | 100 / 100 / 100 | 2.27 s | 0 ms | 0.010 | |
+| `/work/seqdvgc` | 94 | 100 / 100 / 100 | 3.07 s | 0 ms | 0.001 | Pre-existing, see below |
+| `/services` | 99 | 100 / 100 / 100 | 2.03 s | 0 ms | 0.009 | |
+| `/about` | 99 | 100 / 100 / 100 | 2.12 s | 0 ms | 0.009 | |
+| `/lab` | 99 | 100 / 100 / 100 | 1.94 s | 0 ms | 0.009 | |
+| `/lab/light-through-stone` | 99 | 100 / 100 / 100 | 2.12 s | 0 ms | 0 | |
+| `/contact` | 99 | 100 / 100 / 100 | 2.13 s | 0 ms | 0.008 | |
+| `/privacy` | 88 | 100 / 100 / 100 | 2.13 s | 0 ms | 0.215 | Pre-existing, see below |
+
+Every content page gained from 2D: no GPU check and no scene on load means 0 ms of TBT. On this machine `main` scores `/privacy` 62 and `/work/seqdvgc` 71, both with about 0.9–1.6 s of TBT.
+
+**Two pre-existing issues, the same on `main` here** (measured A/B against a `main` build in a worktree):
+- **`/work/seqdvgc` LCP.** The cover image's render delay: `main` 3.22 s, now 3.07 s.
+- **`/privacy` CLS 0.21.** Its h1 reflows from three lines to two when Sora replaces the fallback font at 412px. `main` measures 0.213 here.
+
+Phase 5 measured both in a Linux container, whose fallback font has different metrics, which is why its numbers were better. Neither is in this phase's scope; the fix is font fallback metrics (`size-adjust` on a fallback `@font-face`), suggested for Phase 7.
 
 ### Sizes
 
@@ -289,10 +314,18 @@ LH_TABLE
 | Content pages initial JS (gz) | 16.0–16.6 KB |
 | Scene chunk (gz), only after a passed gate or in 3D mode | 152.8 KB + layers 20.7 KB (unchanged) |
 | Orbit assets | Desktop 2.66 MB / 72 frames (37 used), phone 0.80 MB / 36 frames (10 used), frame-0 AVIF 24 KB / 14 KB |
+| Submission assets | 36 JPEG stills (13 MB): the 2D home at 1440×900 and 390×844 @3× (hero, hero turning, full page), plus the `/potential` story and content pages at 1600×1200, 2560×1440 and phone. Recording: 35.2 s at 1920×1080, 60 fps: MP4 (H.264) 25.2 MB, WebM (VP9) 17.2 MB |
 
 ### Orbit scrub frame pacing (`?fps`, Chromium)
 
-PACING
+`/?fps`, frames loaded, then a steady scroll through the turn: rAF intervals sampled in the page, and the overlay's own readout.
+
+| | Frames | Median | p95 | Max | `?fps` overlay |
+|---|---|---|---|---|---|
+| Desktop 1440×900 (pinned, 180°) | 316 | 16.7 ms | 16.7 ms | 16.8 ms | 60.0 fps · p95 16.7 ms |
+| Phone 390×844 @3×, CPU throttled 4× (unpinned, 90°) | 296 | 16.7 ms | 16.7 ms | 16.8 ms | 60.0 fps · p95 16.8 ms |
+
+Not one dropped frame in either case. This is headless Chromium on this machine; check the real thing on a phone with `?fps`.
 
 ### Contrast (WCAG 2.2 AA) on both basalt tones
 
@@ -313,13 +346,22 @@ Primary buttons (basalt text on lava) are 6.37. axe found no contrast violations
 | `npm run test:flows` (Chromium, desktop and phone) | **18/18**, 0 CSP violations, 0 console errors. Flows: no webgl, tiers, gate pass, gate fail, story, deep link, round trip (2D and 3D), contact, lab |
 | `npm run audit:a11y` | **124 audits, 0 violations**, 0 CSP, 0 console errors. Modes: high, lite, 2d, static, no-JS; desktop and phone; `/potential` at its gate and inside the story |
 | `npm run audit:manual` | **All checks pass:** reflow at 320, 200% zoom, text spacing, keyboard (incl. the gate and the nav pill in the bar and the mobile menu), link text, reduced motion, no-JS, forced colours |
-| `npm run build` / `STRICT_CONTENT=1 npm run build` | STRICT |
+| `npm run build` / `STRICT_CONTENT=1 npm run build` | **Both complete:** `astro check` 0 errors, 0 warnings, 0 hints; the placeholder gate reports nothing left to supply |
 | Hardcoded hex in new or modified components | None (tokens only; shader colours stay in `palette.ts`) |
 | New dependencies | None. Lighthouse was run through `npx`, not added to the project. |
 
 **Firefox and WebKit:** not run. As in Phase 5, they aren't installed here. The suite supports them unchanged (`BROWSER=firefox|webkit`).
 
 ---
+
+## Known issues
+
+- **`/privacy` mobile CLS 0.21 and the case study's LCP of about 3.1 s.** Both are pre-existing; `main` measures the same here. A fix with font fallback metrics is suggested for the next phase.
+- **The 3D reload flow seeds the session's tier cache** before reloading. A real device gets that cache from "Enter the stone". Under a forced tier the cache isn't written, and on SwiftShader an unseeded reload rightly re-probes and drops to 2D. So the "3D survives a reload" path is verified with the cache a real device would have, not fully end to end.
+- **`/potential` scores lower in Lighthouse** (mobile 71) because the gate's check starts on arrival. This is by design for the opt-in page.
+- **In 3D mode the nav has no link to `/potential`**, since the pill reads "Back to 2D". The Eruption notes on `/` and `/services` link to it.
+- **Firefox, WebKit and real devices weren't tested here.** Run `BROWSER=firefox|webkit npm run test:flows` once those browsers are installed. On real devices, check the gate (a mid-range phone should fail politely; a recent laptop should pass) and the orbit scrub on Safari and Chrome for Android.
+- **The orbit's 355° → 0° seam** isn't seamless, because the magma isn't periodic. Scrolling never reaches it.
 
 ## What the owner still has to supply
 

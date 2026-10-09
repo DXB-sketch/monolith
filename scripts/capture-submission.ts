@@ -19,6 +19,7 @@
  *
  * Usage: npm run build && npm run serve:prod   (another terminal)
  *        npm run capture -- [screenshots|recording|all] [http://localhost:4600]
+ * SIZES=home,1600x1200,2560x1440,phone-390x844 limits the screenshots to those sets.
  * Writes to submission/ (not deployed). Needs ffmpeg with libx264 and
  * libvpx-vp9 for the recording. CHROMIUM_PATH optional.
  */
@@ -207,7 +208,9 @@ async function homeScreenshots(dir: string) {
 async function screenshots() {
   const dir = join(out, 'screenshots');
   mkdirSync(dir, { recursive: true });
-  await homeScreenshots(dir);
+  // SIZES=home,2560x1440,phone-390x844 re-renders only those sets.
+  const only = process.env.SIZES?.split(',');
+  if (!only || only.includes('home')) await homeScreenshots(dir);
   const sizes = [
     { name: '1600x1200', viewport: { width: 1600, height: 1200 }, tier: 'high' as const },
     { name: '2560x1440', viewport: { width: 2560, height: 1440 }, tier: 'high' as const },
@@ -219,7 +222,7 @@ async function screenshots() {
       mobile: true,
     },
   ];
-  for (const size of sizes) {
+  for (const size of sizes.filter((s) => !only || only.includes(s.name))) {
     const page = await open(size.viewport, size.scale ?? 1, size.mobile);
     const shot = async (name: string) => {
       // The chapter links focus their heading (right for keyboard users); a still
@@ -230,6 +233,8 @@ async function screenshots() {
         path: join(dir, `${size.name}-${name}.jpg`),
         type: 'jpeg',
         quality: 93,
+        // Large frames on SwiftShader can take well over the default 30 s.
+        timeout: 300_000,
       });
       console.log(`screenshots/${size.name}-${name}.jpg`);
     };
@@ -274,6 +279,7 @@ async function recording() {
       path: join(dir, `${String(n++).padStart(5, '0')}.jpg`),
       type: 'jpeg',
       quality: 92,
+      timeout: 300_000,
     });
     if (n % 60 === 0) console.log(`recording: ${n / 60} s`);
   };
