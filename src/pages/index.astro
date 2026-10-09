@@ -975,12 +975,12 @@ const orbitManifest = JSON.stringify({
   /* No scrubbing (no JS, reduced motion, or the frames aren't loaded): no instruction to scroll. */
   :global(html:not(.js)) .orbit__caption,
   .orbit:global([data-orbit-state='still']) .orbit__caption {
-    visibility: hidden;
+    display: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
     .orbit__caption {
-      visibility: hidden;
+      display: none;
     }
   }
 

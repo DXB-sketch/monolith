@@ -44,7 +44,8 @@ try {
     const error = await page.evaluate(() => window.__sceneError);
     if (error) throw new Error(error);
     const png = join(tmp, `${name}.png`);
-    await page.screenshot({ path: png });
+    // Large portrait frames on SwiftShader can take well over the default 30 s.
+    await page.screenshot({ path: png, timeout: 300_000 });
     await page.close();
 
     const webp = join(out, `${name}.webp`);
