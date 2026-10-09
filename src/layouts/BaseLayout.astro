@@ -25,6 +25,12 @@ interface Props {
   jsonLd?: object | object[];
   /** Keep this page out of search results (e.g. the contact form's thank-you page). */
   noindex?: boolean;
+  /**
+   * Show the persistent scene stage (poster, or the live scene in 3D mode). The
+   * 2D landing page paints its own background instead: the stage stays in the
+   * DOM (it persists across navigations) but is hidden by a data attribute.
+   */
+  stage?: boolean;
 }
 
 const {
@@ -36,6 +42,7 @@ const {
   og = 'home',
   jsonLd,
   noindex = false,
+  stage = true,
 } = Astro.props;
 const fullTitle = title ? `${title} — ${SITE.name}` : `${SITE.name} — ${SITE.location}`;
 // One canonical form per page: no trailing slash (except the root), same as the sitemap.
@@ -45,7 +52,7 @@ const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 ---
 
 <!doctype html>
-<html lang="en-AU">
+<html lang="en-AU" data-stage={stage ? undefined : 'hidden'}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -98,14 +105,32 @@ const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     />
 
     <!-- Mark JS as available before first paint so no-JS fallbacks never flash.
-         The intro shows once per session, on a direct visit to the home page:
-         never a deep link, back/forward, reduced motion or a ClientRouter navigation. -->
+         The experience mode (2D unless the visitor entered 3D at the gate, or
+         ?tier= forces it) is marked too, so the nav's 3D pill never flips after
+         paint; src/lib/scene-boot.ts applies the same rules and owns it after this.
+         The intro reveals the 3D story, so it shows only on /potential: once per
+         session, on a direct visit (never a deep link, back/forward, reduced
+         motion or a ClientRouter navigation). -->
     <script is:inline>
       (function () {
         const root = document.documentElement;
         root.classList.add('js');
         try {
-          if (location.pathname !== '/' || location.hash) return;
+          const forced = new URLSearchParams(location.search).get('tier');
+          const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+          const still = matchMedia('(prefers-reduced-motion: reduce)').matches || saveData;
+          const entered =
+            !still &&
+            ['poster', 'low', 'off'].indexOf(forced) < 0 &&
+            localStorage.getItem('monolith:experience') === '3d';
+          const live = entered || ['high', 'medium', 'lite'].indexOf(forced) >= 0;
+          root.dataset.experience = !still && live ? '3d' : '2d';
+          if (entered) root.setAttribute('data-entered', '');
+        } catch {
+          root.dataset.experience = '2d';
+        }
+        try {
+          if (location.pathname.replace(/\/$/, '') !== '/potential' || location.hash) return;
           if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
           const nav = performance.getEntriesByType('navigation')[0];
           if (nav && nav.type === 'back_forward') return;
@@ -128,7 +153,7 @@ const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
       Skip to content
     </a>
 
-    <SceneStage />
+    <SceneStage lazyPoster={!stage} />
 
     <Nav />
 

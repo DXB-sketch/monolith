@@ -3,7 +3,7 @@
  * visitors get and do.
  *
  *   scene_tier      the tier the visit settled on, and why when it's the poster
- *   story_progress  the furthest home chapter reached (once, when leaving the story)
+ *   story_progress  the furthest story chapter reached on /potential (once, when leaving the story)
  *   cta_click       which "Start a project" / "Arrange a call" button, on which page
  *   contact_step    a brief step reached for the first time
  *   contact_submit  a brief sent successfully
@@ -46,6 +46,9 @@ export const pagePath = () => location.pathname.replace(/(.)\/$/, '$1');
  */
 export function posterReason(reason: string): string {
   const r = reason.replace(/^remembered this session: /, '');
+  // Phase 6: 2D is the default, and the gate's check never counts as a visit's tier.
+  if (/experience-2d/.test(r)) return 'experience-2d';
+  if (/awaiting the gate|gate check/.test(r)) return 'gate';
   if (/reduced-motion/.test(r)) return 'reduced-motion';
   if (/save-data/.test(r)) return 'save-data';
   if (/forced/.test(r)) return 'forced';

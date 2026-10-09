@@ -1,12 +1,21 @@
 ---
 /**
  * The persistent, decorative scene layer: a static poster that is always present,
- * and the WebGL canvas that cross-fades in over it once the first frame renders.
- * Persisted across ClientRouter navigations with transition:persist.
+ * and the WebGL canvas that cross-fades in over it once the first frame renders
+ * (3D mode only, Phase 6). Persisted across ClientRouter navigations with
+ * transition:persist.
  *
  * Nothing in here carries information. It is aria-hidden and never receives
  * pointer events; the scene reads the pointer from the window instead.
+ *
+ * The 2D landing page hides the stage (html[data-stage='hidden']) and paints its
+ * own background. When it's the first page of a visit the poster is lazy, so a
+ * hidden stage downloads nothing; it loads once a page that shows it arrives.
  */
+interface Props {
+  lazyPoster?: boolean;
+}
+const { lazyPoster = false } = Astro.props;
 ---
 
 <div class="stage" aria-hidden="true" data-scene-stage transition:persist="scene">
@@ -39,7 +48,8 @@
       width="1280"
       height="720"
       decoding="async"
-      fetchpriority="high"
+      loading={lazyPoster ? 'lazy' : undefined}
+      fetchpriority={lazyPoster ? undefined : 'high'}
     />
   </picture>
   <canvas class="stage__canvas" data-scene-canvas tabindex="-1"></canvas>
@@ -63,6 +73,11 @@
       radial-gradient(120% 60% at 40% 62%, var(--ember) 0%, transparent 60%),
       linear-gradient(180deg, var(--basalt) 0%, var(--magma) 58%, var(--basalt) 72%);
     transition: opacity var(--dur-fade) var(--ease-out);
+  }
+
+  /* The 2D landing page: the stage stays in the DOM (persisted) but isn't shown. */
+  :global(html[data-stage='hidden']) .stage {
+    display: none;
   }
 
   .stage__poster,

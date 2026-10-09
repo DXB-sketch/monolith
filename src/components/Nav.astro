@@ -2,6 +2,7 @@
 import { NAV, CTA } from '../lib/site';
 
 const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const POTENTIAL = '/potential';
 /** The page itself is "page"; a page inside its section (a case study under Work) is "true". */
 const current = (href: string) =>
   path === href ? 'page' : path.startsWith(`${href}/`) ? 'true' : undefined;
@@ -23,6 +24,22 @@ const current = (href: string) =>
           </a>
         </li>
       ))}
+      {/* The 3D showcase: the mobile menu's copy of the bar's pill (hidden on desktop). */}
+      <li class="nav__potential-item">
+        <a
+          class="nav__link nav__potential-menu-link"
+          href={POTENTIAL}
+          aria-current={current(POTENTIAL)}
+          data-potential-link
+        >
+          <span class="nav__dot" aria-hidden="true"></span>
+          See the potential · 3D
+        </a>
+        <button class="nav__link nav__potential-menu-link" type="button" data-experience-exit>
+          <span class="nav__dot" aria-hidden="true"></span>
+          Back to 2D
+        </button>
+      </li>
       {/* Optional ambient sound, off by default (JS only; nothing loads until it's turned on). */}
       <li class="nav__sound-item" data-sound-item hidden>
         <button class="nav__sound" type="button" aria-pressed="false" data-sound-toggle>
@@ -38,6 +55,27 @@ const current = (href: string) =>
         </button>
       </li>
     </ul>
+
+    {/*
+      "See the potential": a link in 2D, "Back to 2D" in 3D mode (html[data-experience]).
+      Shortened to "3D" / "2D" in the collapsed nav; below 22rem it's in the menu only.
+    */}
+    <a
+      class="nav__potential"
+      href={POTENTIAL}
+      aria-label="See the potential, 3D demo"
+      aria-current={current(POTENTIAL)}
+      data-potential-link
+    >
+      <span class="nav__dot" aria-hidden="true"></span>
+      <span class="nav__potential-full">See the potential · 3D</span>
+      <span class="nav__potential-short">3D</span>
+    </a>
+    <button class="nav__potential" type="button" aria-label="Back to 2D" data-experience-exit>
+      <span class="nav__dot" aria-hidden="true"></span>
+      <span class="nav__potential-full">Back to 2D</span>
+      <span class="nav__potential-short">2D</span>
+    </button>
 
     <a
       class="btn btn--primary nav__cta"
@@ -66,6 +104,7 @@ const current = (href: string) =>
 
 <script>
   import { pagePath, track } from '../lib/analytics';
+  import { exitExperience } from '../lib/scene-boot';
 
   // Mobile disclosure menu. Re-bound after every ClientRouter navigation because
   // the header is swapped with each page.
@@ -121,6 +160,23 @@ const current = (href: string) =>
 
   bindNav();
   document.addEventListener('astro:page-load', bindNav);
+
+  // ── "Back to 2D" ─────────────────────────────────────────────────────────
+  // One delegated listener (the header is swapped with each page). The button
+  // disappears as the mode changes, so focus moves to the link that replaces it.
+  document.addEventListener('click', (event) => {
+    const button = (event.target as Element | null)?.closest?.('[data-experience-exit]');
+    if (!button) return;
+    const inMenu = Boolean(button.closest('[data-nav-menu]'));
+    exitExperience();
+    const scope = inMenu
+      ? document.querySelector('[data-nav-menu]')
+      : document.querySelector('[data-nav]');
+    const link = Array.from(
+      scope?.querySelectorAll<HTMLElement>('[data-potential-link]') ?? [],
+    ).find((el) => inMenu === Boolean(el.closest('[data-nav-menu]')));
+    link?.focus();
+  });
 
   // ── Ambient sound toggle ─────────────────────────────────────────────────
   // The choice lasts for this browser session only. The sound module (and its
@@ -265,6 +321,80 @@ const current = (href: string) =>
     --btn-pad-x: 1.25em;
   }
 
+  /* ── See the potential · 3D ────────────────────────────────────────────── */
+  .nav__potential {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55em;
+    min-height: 44px;
+    padding-inline: 0.95rem;
+    border: var(--hairline);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--ash-soft);
+    font-family: var(--font-mono);
+    font-size: var(--step--2);
+    font-weight: var(--weight-mono);
+    letter-spacing: var(--tracking-mono);
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out);
+  }
+
+  .nav__potential:hover,
+  .nav__potential[aria-current] {
+    border-color: var(--lava);
+    color: var(--bone);
+  }
+
+  .nav__dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--lava);
+    box-shadow: 0 0 6px 1px rgb(var(--lava-rgb) / 0.6);
+  }
+
+  .nav__potential-short {
+    display: none;
+  }
+
+  /* 2D: the link. 3D mode: the button that leaves it. */
+  [data-experience-exit] {
+    display: none;
+  }
+
+  :global(html[data-experience='3d']) [data-potential-link] {
+    display: none;
+  }
+
+  :global(html[data-experience='3d']) .nav__potential[data-experience-exit] {
+    display: inline-flex;
+  }
+
+  /* The menu's copy is for the collapsed nav only. */
+  .nav__potential-item {
+    display: none;
+  }
+
+  .nav__potential-menu-link {
+    gap: 0.6em;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  :global(html[data-experience='3d']) .nav__potential-menu-link[data-experience-exit] {
+    display: inline-flex;
+  }
+
   .nav__sound {
     display: inline-flex;
     align-items: center;
@@ -362,6 +492,23 @@ const current = (href: string) =>
     .nav__cta {
       --btn-pad-x: 1em;
       font-size: 0.8125rem;
+    }
+
+    /* The bar's pill shortens to "3D" ("2D" in 3D mode); the menu has the full one. */
+    .nav__potential {
+      padding-inline: 0.8rem;
+    }
+
+    .nav__potential-full {
+      display: none;
+    }
+
+    .nav__potential-short {
+      display: inline;
+    }
+
+    .nav__potential-item {
+      display: block;
     }
 
     :global(html.js) .nav__toggle {
@@ -492,6 +639,12 @@ const current = (href: string) =>
     .nav__cta {
       --btn-pad-x: 0.75em;
       font-size: 0.75rem;
+    }
+
+    /* No room left in the bar at 320 px: the pill is in the menu only. */
+    :global(html.js) .nav__potential,
+    :global(html.js[data-experience='3d']) .nav__potential[data-experience-exit] {
+      display: none;
     }
 
     .nav__toggle-label {

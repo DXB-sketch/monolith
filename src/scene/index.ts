@@ -42,6 +42,7 @@ import {
   glideFrame,
   idleOffset,
   orbitAt,
+  orbitCaptureAt,
   poseFromFrame,
   viewAt,
   type OrbitFrame,
@@ -117,8 +118,12 @@ export interface SceneOptions {
   fixedTier?: boolean;
   /** Hold this resolution scale (testing, cost measurements). */
   fixedScale?: number;
-  /** Poster capture: every layer at once, frozen time (and story progress), drawing buffer kept. */
-  capture?: { time: number; progress?: number; view?: PageView };
+  /**
+   * Poster capture: every layer at once, frozen time (and story progress), drawing buffer kept.
+   * `orbit` (degrees): the capture-only orbit path (camera-path.ts) instead of the story,
+   * for the 2D hero's image sequence (scripts/render-orbit.ts); see captureFrame().
+   */
+  capture?: { time: number; progress?: number; view?: PageView; orbit?: number };
   /** Dev only: object names to hide (sky, peaks, terrain, lava, monolith, embers, glow). */
   debugHide?: string[];
   /** Dev only: never add the post-processing layer. */
@@ -174,6 +179,19 @@ export interface SceneHandle {
   readonly cameraProgress: number;
   /** Per-layer GPU milliseconds, or null without timer queries. */
   gpuTimings(): GpuTimings | null;
+  /**
+   * The /potential gate's benchmark (Phase 6): while held, the frame-time
+   * controller makes no changes at all (resolution at full scale, no extras,
+   * haze or tier changes), so the measurement is of the scene as it will run.
+   */
+  holdController(hold: boolean): void;
+  /**
+   * Intervals between rendered frames (rAF timestamps, ms) over the next
+   * `durationMs` of rendering. Paused time is not counted.
+   */
+  measureFrames(durationMs: number): Promise<number[]>;
+  /** Capture with `capture.orbit` only: render one frame at this time and orbit angle (degrees). */
+  captureFrame(time: number, orbit: number): void;
   /** Readable state for the ?fps overlay: layers, scale, frame time, decisions. */
   stats(): string[];
 }
@@ -371,6 +389,8 @@ export async function createScene(
   let storyMap: StoryMap = DEFAULT_STORY_MAP;
   // Page views and glides between framings.
   let view: PageView | null = capture?.view ?? null;
+  /** Capture only: the orbit path's angle in degrees (scripts/render-orbit.ts). */
+  let captureOrbit: number | null = capture?.orbit ?? null;
   const targetFrame = createFrame();
   /** The orbit frame the camera used last (before the dive, if any): where a glide starts. */
   const frame = createFrame();
@@ -744,10 +764,15 @@ export async function createScene(
       copyState(targetState, chapterState);
       dive = position.dive;
     }
+    if (captureOrbit !== null) {
+      // The 2D hero's image sequence: a fixed orbit, nothing else moves the camera.
+      orbitCaptureAt(captureOrbit, camera.aspect, frame);
+      poseFromFrame(frame, pose);
+    }
     framed = true;
 
     // Idle drift breathes during the orbit and fades out as the camera nears the stone.
-    idleOffset(state.time, drift).multiplyScalar(1 - pose.dive);
+    idleOffset(state.time, drift).multiplyScalar(captureOrbit !== null ? 0 : 1 - pose.dive);
     camera.position.copy(pose.position).add(drift);
     camera.lookAt(pose.target);
     const near = MathUtils.clamp(pose.clearance * 0.4, 0.03, 0.5);
@@ -905,6 +930,15 @@ export async function createScene(
   let headroomSince = 0;
   let switching = false;
   let gaveUp = false;
+  /** The gate's benchmark holds the controller (holdController). */
+  let controllerHeld = false;
+  /** An open measureFrames() request. */
+  let frameLog: {
+    samples: number[];
+    elapsed: number;
+    duration: number;
+    done: (samples: number[]) => void;
+  } | null = null;
 
   /** Ignore the next frames (a layer, tier or scale just changed). */
   const unsettle = (frames = SETTLE_FRAMES) => {
@@ -1017,7 +1051,8 @@ export async function createScene(
   };
 
   const control = (w: World, interval: number, now: number) => {
-    if (capture || switching || frameIndex < settleUntilFrame || w.fades.length) return;
+    if (capture || controllerHeld || switching || frameIndex < settleUntilFrame || w.fades.length)
+      return;
     samples.push(interval);
     if (now - lastDecision < DECISION_MS || samples.length < 8) return;
     lastDecision = now;
@@ -1111,9 +1146,19 @@ export async function createScene(
     const budget = 1000 / w.settings.fps;
     const since = now - lastRender;
     if (firstFrame && since < budget - vsync * 0.5) return;
+    const measured = lastRender > 0;
     lastRender = now;
     render(Math.min(since, 100) / 1000);
     frameIndex++;
+    if (frameLog && measured) {
+      frameLog.samples.push(since);
+      frameLog.elapsed += since;
+      if (frameLog.elapsed >= frameLog.duration) {
+        const log = frameLog;
+        frameLog = null;
+        log.done(log.samples);
+      }
+    }
 
     if (!firstFrame) {
       firstFrame = true;
@@ -1225,6 +1270,29 @@ export async function createScene(
       return glide !== null;
     },
     gpuTimings: () => timer?.read() ?? null,
+    holdController(hold) {
+      if (controllerHeld === hold) return;
+      controllerHeld = hold;
+      if (hold && options.fixedScale === undefined && scale !== 1) {
+        decide(`resolution ${scale.toFixed(2)} → 1.00 (held for the benchmark)`);
+        scale = 1;
+        resize();
+      }
+      unsettle();
+    },
+    measureFrames(durationMs) {
+      frameLog?.done(frameLog.samples);
+      return new Promise((done) => {
+        frameLog = { samples: [], elapsed: 0, duration: durationMs, done };
+        kick();
+      });
+    },
+    captureFrame(time, orbit) {
+      if (!capture || captureOrbit === null) return;
+      state.time = time;
+      captureOrbit = orbit;
+      render(0);
+    },
     stats() {
       const w = world;
       if (!w) return [];

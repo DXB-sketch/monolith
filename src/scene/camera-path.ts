@@ -188,6 +188,39 @@ export const VIEW_FRAMES: Record<PageView, ChapterFrame> = {
   },
 };
 
+/**
+ * Capture only (Phase 6, scripts/render-orbit.ts): a slow orbit around the
+ * stone for the 2D landing page's pre-rendered hero. Fixed radius and height,
+ * framed for a 4:5 picture with the stone filling about 70% of its height, the
+ * lava's glow on the ground below and the sky above. Angle 0 starts at the
+ * Arrival side (front-left); positive angles turn the same way as the story.
+ * Never used by the story or the page views.
+ */
+export const ORBIT_CAPTURE = {
+  start: FACE_ANGLE.front - 0.2,
+  radius: 46,
+  height: 3.2,
+  targetHeight: 7.2,
+  fov: 30,
+} as const;
+
+/** The capture orbit's frame at `degrees` around the stone. */
+export function orbitCaptureAt(
+  degrees: number,
+  _aspect: number,
+  out: OrbitFrame = orbit(0, 0, 0, 0, 0, 0),
+) {
+  const c = ORBIT_CAPTURE;
+  out.theta = c.start - MathUtils.degToRad(degrees);
+  out.radius = c.radius;
+  out.height = c.height;
+  out.targetHeight = c.targetHeight;
+  out.lateral = 0;
+  out.depth = 0;
+  out.fov = c.fov;
+  return out;
+}
+
 const lerp = MathUtils.lerp;
 
 /** 0 for portrait, 1 for landscape, blended in between. */

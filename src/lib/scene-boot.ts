@@ -1,6 +1,18 @@
 /**
- * Scene boot: decides the quality tier, keeps the poster in charge until the
- * WebGL scene has rendered a frame, and owns the scene's lifecycle.
+ * Scene boot: decides the experience mode and the quality tier, keeps the
+ * poster in charge until the WebGL scene has rendered a frame, and owns the
+ * scene's lifecycle.
+ *
+ * Phase 6: the experience mode sits above the tiers. '2d' is the default
+ * everywhere and runs no WebGL at all: no GPU check, no worker, no scene chunk
+ * (not even prefetched), no fissure atlas, no canvas context. The tier stays
+ * the poster with the reason `experience-2d`. '3d' is entered only from the
+ * /potential gate (src/lib/gate.ts), which benchmarks the device first through
+ * runTrial(); then everything below runs exactly as before. The choice is
+ * remembered in localStorage (only ever as '3d', after a passed gate), and
+ * "Back to 2D" (the nav) leaves it again without a reload. `?tier=high|medium|lite`
+ * forces 3D at that tier for tests and captures; `?tier=poster` forces 2D.
+ * Reduced motion and save-data always mean 2D.
  *
  * This file is in the initial bundle, so it never imports Three.js. The scene
  * is a separate chunk, executed only for the live tiers (High, Medium, Lite):
@@ -32,15 +44,20 @@ import {
 import {
   detectTier,
   detectTierFast,
+  experienceRuledOut,
   FISSURE_ATLAS_URL,
   forcedTier,
   isSceneTier,
   prefersReducedMotion,
   readTierCache,
   sceneStillPossible,
+  storedExperience,
+  storeExperience,
   TIER_SETTINGS,
   writeTierCache,
+  type Experience,
   type QualityTier,
+  type SceneTier,
 } from '../scene/quality';
 import type { SceneHandle, StoryMap } from '../scene/index';
 import { isPageView, VIEW_SCALE_CAP, type PageView } from '../scene/views';
@@ -79,6 +96,14 @@ const KEEP_TIER = DEBUG && params.has('keeptier');
 const FIXED_SCALE = params.has('scale') ? Number(params.get('scale')) || undefined : undefined;
 /** ?fps: time each scene layer on the GPU for the overlay. */
 const GPU_TIMING = params.has('fps');
+
+let experience: Experience = '2d';
+/** The visitor entered 3D through the gate (this visit, or remembered). */
+let entered = false;
+/** This page has the gate (/potential) and the visitor hasn't entered: the scene waits for it. */
+let gated = false;
+/** The gate's check, while it runs (and once passed, until "Enter the stone"). */
+let trial: Trial | null = null;
 
 let tier: QualityTier = 'poster';
 /** True until the GPU has been checked (after first paint, on scene pages only). */
@@ -137,6 +162,8 @@ function applyRootState(root: HTMLElement = html) {
   root.classList.add('js');
   if (pending) delete root.dataset.tier;
   else root.dataset.tier = tier;
+  root.dataset.experience = experience;
+  root.toggleAttribute('data-entered', entered);
 }
 
 function stampIncoming(event: Event) {
@@ -154,9 +181,13 @@ function afterFirstPaint(task: () => void) {
   });
 }
 
-/** The scene has somewhere to be: the home story on screen, or a content page's view. */
+/** The scene has somewhere to be: the story (/potential), or a content page's view. */
 const sceneWanted = () => Boolean(pageView) || Boolean(anchor);
-const sceneActive = () => Boolean(pageView) || (Boolean(anchor) && anchorVisible);
+/** The gate's check renders behind the gate panel, whether or not the story is on screen yet. */
+const sceneActive = () =>
+  Boolean(pageView) || (Boolean(anchor) && (anchorVisible || Boolean(trial)));
+/** WebGL may run: 3D mode (and not on a gate still waiting), or the gate's own check. */
+const sceneAllowed = () => Boolean(trial) || (experience === '3d' && !gated);
 
 function sync() {
   const el = stage();
@@ -174,6 +205,8 @@ function sync() {
  */
 function storyMode(): StoryMode {
   if (prefersReducedMotion()) return 'static';
+  // Behind the gate the story stays as poster visitors see it, even while the check runs.
+  if (trial || gated) return 'lite';
   if (pending) return 'pending';
   return tier === 'poster' ? 'lite' : 'full';
 }
@@ -205,6 +238,8 @@ function setTier(next: QualityTier, reason: string, fromScene = false) {
     recordPosterTier();
   }
   if (next === 'poster') {
+    // 3D mode whose device (or scene) ends on the poster: back to 2D, so the nav says so too.
+    if (experience === '3d' && !gated && !trial) leaveExperience(reason);
     document.dispatchEvent(new CustomEvent('monolith:poster'));
     reportTier();
   }
@@ -340,6 +375,7 @@ function setWash(amount: number, css: string) {
 
 function onFirstFrame() {
   firstFrameSeen = true;
+  trial?.firstFrame();
   clearTimeout(firstFrameTimer);
   mark('first frame');
   teardownReason = '';
@@ -369,7 +405,8 @@ function armFirstFrameCheck() {
  * Back to the poster. The context is kept by default (renderer.dispose() already
  * frees the GPU resources), so a later tier change can still rebuild on this canvas.
  */
-function teardownScene(reason: string, { loseContext = false } = {}) {
+function teardownScene(reason: string, { loseContext = false, immediate = false } = {}) {
+  trial?.fail(reason);
   sceneToken++;
   atlasFetch = null;
   sceneLoading = false;
@@ -383,8 +420,10 @@ function teardownScene(reason: string, { loseContext = false } = {}) {
   fallback(`poster: ${reason}`);
   teardownReason = reason;
   if (sceneBlocked) reportTier();
-  // Let the canvas fade back to the poster before releasing the GPU resources.
-  if (current) setTimeout(() => current.dispose({ loseContext }), CROSSFADE_MS + 100);
+  // Let the canvas fade back to the poster before releasing the GPU resources
+  // (at once when another scene is about to start on the same canvas).
+  if (current && immediate) current.dispose({ loseContext });
+  else if (current) setTimeout(() => current.dispose({ loseContext }), CROSSFADE_MS + 100);
 }
 
 function onContextLost() {
@@ -428,7 +467,15 @@ function fetchAtlas(): Promise<Blob> | undefined {
 }
 
 async function ensureScene() {
-  if (handle || sceneLoading || sceneBlocked || !sceneWanted() || pending || !isSceneTier(tier))
+  if (
+    handle ||
+    sceneLoading ||
+    sceneBlocked ||
+    !sceneAllowed() ||
+    !sceneWanted() ||
+    pending ||
+    !isSceneTier(tier)
+  )
     return;
   const target = canvas();
   if (!target) return;
@@ -448,17 +495,21 @@ async function ensureScene() {
     mark('scene chunk loaded');
     if (token !== sceneToken || !isSceneTier(tier)) return;
 
-    const cache = readTierCache();
+    // The gate's check runs at full scale, never above the tier being tested.
+    const cache = trial ? null : readTierCache();
     const setup = mod.createScene(target, {
       tier,
-      startScale: cache?.scale,
-      ceiling: cache?.ceiling,
+      startScale: trial ? 1 : cache?.scale,
+      ceiling: trial ? trial.tier : cache?.ceiling,
       upgraded: cache?.upgraded,
       atlas,
       fixedTier: forcedTier() !== null || KEEP_TIER,
       fixedScale: FIXED_SCALE,
       onFirstFrame,
-      onPhase: (name, detail) => mark(name, detail),
+      onPhase: (name, detail) => {
+        mark(name, detail);
+        if (name === 'L6 extras') trial?.built();
+      },
       onIssue: (message) => error(message),
       onDecision: (message) => info(`scene: ${message}`),
       onSettle: (settled) =>
@@ -490,6 +541,7 @@ async function ensureScene() {
       return;
     }
     handle = created;
+    if (trial) created.holdController(true);
     info(`scene running: ${created.description}`);
     flushQueue();
     armFirstFrameCheck();
@@ -591,6 +643,181 @@ function unmountPageReveals() {
 /** ?debug: live ScrollTriggers on this page (set once GSAP has loaded). */
 let countTriggers: (() => number) | null = null;
 
+// ── Experience mode and the gate's check ──────────────────────────────────
+
+/** First frame to the end of the build-up (L2–L6 fade in one after another). */
+const TRIAL_BUILD_TIMEOUT_MS = 8000;
+/** Chunk, setup and first frame together. */
+const TRIAL_START_TIMEOUT_MS = SCENE_CHUNK_TIMEOUT_MS + FIRST_FRAME_TIMEOUT_MS;
+
+interface Trial {
+  tier: SceneTier;
+  firstFrame(): void;
+  built(): void;
+  fail(reason: string): void;
+}
+
+export interface TrialHandle {
+  tier: SceneTier;
+  /** Resolves on the scene's first frame; rejects with the reason it couldn't start. */
+  started: Promise<void>;
+  /** Resolves once every layer is in (or after a timeout); rejects if it never started. */
+  built: Promise<void>;
+  /** Rejects if the scene is torn down while the check is still going. */
+  failed: Promise<never>;
+}
+
+export interface ExperienceState {
+  experience: Experience;
+  entered: boolean;
+}
+
+function announceExperience() {
+  applyRootState();
+  document.dispatchEvent(
+    new CustomEvent<ExperienceState>('monolith:experience', { detail: { experience, entered } }),
+  );
+}
+
+export const getExperience = (): ExperienceState => ({ experience, entered });
+
+/**
+ * The 3D pipeline as it always worked: cheap rules, this session's memory,
+ * otherwise the GPU check after first paint.
+ */
+function start3d() {
+  const fast = detectTierFast();
+  const cached = fast ? null : readTierCache();
+  if (fast) setTier(fast.tier, fast.reason);
+  else if (cached) setTier(cached.tier, `remembered this session: ${cached.reason}`);
+  else {
+    pending = true;
+    detecting = false;
+    mark('tier provisional', 'pending the GPU check');
+    applyRootState();
+  }
+}
+
+/** 3D mode can't continue (the device ended on the poster): back to 2D. */
+function leaveExperience(reason: string) {
+  experience = '2d';
+  entered = false;
+  // Reduced motion switched on doesn't forget the choice: it overrides it while it lasts.
+  if (!/reduced motion/.test(reason)) storeExperience('2d');
+  info(`3D mode left: ${reason}`);
+  announceExperience();
+}
+
+/**
+ * The gate's check at one tier: the scene starts behind the gate panel at the
+ * Arrival view, with its controller held at full scale (src/lib/gate.ts
+ * measures it with measureTrial()). Any running scene or check is replaced.
+ */
+export function runTrial(next: SceneTier): TrialHandle {
+  endTrial('check restarted');
+  let onFrame!: () => void;
+  let onBuilt!: () => void;
+  let rejectStart!: (error: Error) => void;
+  let rejectFailed!: (error: Error) => void;
+  const started = new Promise<void>((resolve, reject) => {
+    onFrame = resolve;
+    rejectStart = reject;
+  });
+  const done = new Promise<void>((resolve) => (onBuilt = resolve));
+  const failed = new Promise<never>((_, reject) => (rejectFailed = reject));
+  failed.catch(() => {});
+  started.catch(() => {});
+  const current: Trial = {
+    tier: next,
+    firstFrame: onFrame,
+    built: onBuilt,
+    fail: (reason) => {
+      rejectStart(new Error(reason));
+      rejectFailed(new Error(reason));
+    },
+  };
+  trial = current;
+  sceneBlocked = '';
+  mark('gate check', next);
+  setTier(next, `gate check at ${next}`);
+  void ensureScene();
+  story?.setMode(storyMode());
+  sync();
+  const timeout = window.setTimeout(() => {
+    if (trial === current && !firstFrameSeen)
+      teardownScene(`no frame within ${TRIAL_START_TIMEOUT_MS / 1000} s`, { immediate: true });
+  }, TRIAL_START_TIMEOUT_MS);
+  const clear = () => clearTimeout(timeout);
+  started.then(clear, clear);
+  const built = started.then(() =>
+    Promise.race([
+      done,
+      sleep(TRIAL_BUILD_TIMEOUT_MS).then(() => mark('gate check', 'build-up timed out')),
+    ]).then(() => {}),
+  );
+  built.catch(() => {});
+  return { tier: next, started, built, failed };
+}
+
+/** The running check's frame intervals (ms) over `durationMs`, and the GPU's frame time if known. */
+export async function measureTrial(
+  durationMs: number,
+): Promise<{ samples: number[]; gpu: number | null }> {
+  const current = handle;
+  if (!trial || !current) throw new Error('the check is not running');
+  const samples = await current.measureFrames(durationMs);
+  return { samples, gpu: current.gpuTimings()?.ms.frame ?? null };
+}
+
+/** Stop the check (failed, abandoned or restarted): back to the poster, still in 2D. */
+export function endTrial(reason: string) {
+  if (!trial) return;
+  trial = null;
+  if (handle || sceneLoading) teardownScene(reason, { immediate: true });
+  setTier('poster', experience === '3d' && !gated ? reason : 'experience-2d');
+  story?.setMode(storyMode());
+  sync();
+}
+
+/** "Enter the stone": the check passed, so 3D mode starts here and is remembered. */
+export function enterExperience(): boolean {
+  const current = trial;
+  if (!current || !handle || !firstFrameSeen) return false;
+  trial = null;
+  experience = '3d';
+  entered = true;
+  gated = false;
+  storeExperience('3d');
+  writeTierCache({
+    tier: current.tier,
+    reason: `passed the gate at ${current.tier}`,
+    ceiling: current.tier,
+  });
+  handle.holdController(false);
+  mark('3D mode entered', current.tier);
+  announceExperience();
+  story?.setMode(storyMode());
+  story?.requestRefresh();
+  sync();
+  return true;
+}
+
+/** "Back to 2D": the scene stops, the choice is forgotten, the page stays as it is. */
+export function exitExperience() {
+  if (trial) endTrial('back to 2D');
+  experience = '2d';
+  entered = false;
+  storeExperience('2d');
+  gated = Boolean(document.querySelector('[data-gate]'));
+  if (handle || sceneLoading) teardownScene('back to 2D');
+  pending = false;
+  setTier('poster', 'experience-2d');
+  mark('3D mode left', 'back to 2D');
+  announceExperience();
+  story?.setMode(storyMode());
+  sync();
+}
+
 // ── Pages ─────────────────────────────────────────────────────────────────
 
 let navigatingTimer = 0;
@@ -598,6 +825,16 @@ let resumeTimer = 0;
 
 /** Called on first load and after every ClientRouter navigation. */
 function onPage() {
+  const wasGated = gated;
+  gated = Boolean(document.querySelector('[data-gate]')) && !entered;
+  if (gated && experience === '3d' && !trial && (isSceneTier(tier) || pending)) {
+    // Forced 3D (tests) reaching the gate: the scene waits for the gate like anyone's.
+    if (handle || sceneLoading) teardownScene('awaiting the gate');
+    pending = false;
+    setTier('poster', 'awaiting the gate');
+  } else if (wasGated && !gated && experience === '3d' && tierReason === 'awaiting the gate') {
+    start3d();
+  }
   applyRootState();
   // The stone's dip during a page change lifts as the new page settles.
   clearTimeout(resumeTimer);
@@ -655,13 +892,19 @@ export function initSceneBoot() {
   started = true;
   mark('boot start');
 
-  // Cheap rules first, then this session's memory (so returning home doesn't
-  // probe the GPU again); otherwise the GPU check runs after first paint.
-  const fast = detectTierFast();
-  const cached = fast ? null : readTierCache();
-  if (fast) setTier(fast.tier, fast.reason);
-  else if (cached) setTier(cached.tier, `remembered this session: ${cached.reason}`);
-  else mark('tier provisional', 'pending the GPU check');
+  // The experience first. 2D (the default) settles the poster at once and runs
+  // no WebGL code at all. 3D (entered at the gate, or forced with ?tier=) runs
+  // the tier pipeline: cheap rules first, then this session's memory (so a new
+  // page doesn't probe the GPU again); otherwise the GPU check after first paint.
+  const ruledOut = experienceRuledOut();
+  const forced = forcedTier();
+  entered = !ruledOut && forced !== 'poster' && storedExperience() === '3d';
+  experience = !ruledOut && (entered || isSceneTier(forced)) ? '3d' : '2d';
+  gated = Boolean(document.querySelector('[data-gate]')) && !entered;
+  if (experience === '3d' && !gated) start3d();
+  else if (experience === '3d') setTier('poster', 'awaiting the gate');
+  else
+    setTier('poster', ruledOut ?? (forced === 'poster' ? 'forced with ?tier=' : 'experience-2d'));
   applyRootState();
 
   document.fonts?.ready.then(() => mark('fonts ready'));
@@ -679,8 +922,10 @@ export function initSceneBoot() {
     clearTimeout(resumeTimer);
     resumeTimer = window.setTimeout(sync, 3000);
   });
-  // Kill the home story's triggers and scroll listeners before the page is swapped.
+  // Kill the story's triggers and scroll listeners before the page is swapped.
   document.addEventListener('astro:before-swap', (event) => {
+    // Leaving the gate mid-check (or passed but not entered): the check ends here.
+    endTrial('left the page during the check');
     stampIncoming(event);
     unmountStory();
     unmountPageReveals();
@@ -697,6 +942,7 @@ export function initSceneBoot() {
   matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => {
     if (!prefersReducedMotion()) return;
     pageReveals?.finish();
+    endTrial('reduced motion switched on');
     setTier('poster', 'reduced motion switched on');
   });
 
@@ -712,6 +958,10 @@ export function initSceneBoot() {
     (window as unknown as { __monolith?: object }).__monolith = {
       state: () => ({
         tier: pending ? 'pending' : tier,
+        experience,
+        entered,
+        gated,
+        trial: trial?.tier ?? null,
         story: story?.mode ?? null,
         scene: handle ? handle.description : null,
         firstFrame: firstFrameSeen,

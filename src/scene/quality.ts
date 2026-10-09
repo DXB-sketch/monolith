@@ -290,8 +290,58 @@ export function prefersReducedMotion(): boolean {
   return matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function saveData(): boolean {
+export function saveData(): boolean {
   return (navigator as NavigatorHints).connection?.saveData === true;
+}
+
+/** 2g or 3g as reported by the Network Information API (the orbit keeps its first frame). */
+export function slowConnection(): boolean {
+  const type = (navigator as NavigatorHints).connection?.effectiveType;
+  return type === 'slow-2g' || type === '2g' || type === '3g';
+}
+
+// ── Experience mode (Phase 6) ────────────────────────────────────────────
+//
+// Above the tiers: '2d' (the default everywhere: no WebGL at all) or '3d',
+// entered only from the /potential gate after it has benchmarked the device.
+
+export type Experience = '2d' | '3d';
+
+/** localStorage key; only ever written as '3d', after a passed gate. */
+export const EXPERIENCE_KEY = 'monolith:experience';
+
+/** The gate's frame-rate test: how long it measures, once every layer is in. */
+export const GATE_BENCHMARK_MS = 2000;
+/** Pass: median frame time at or under this… */
+export const GATE_MEDIAN_MS = 20;
+/** …and the 95th percentile at or under this. */
+export const GATE_P95_MS = 34;
+/** The tiers the showcase is offered at. Lite is not: it's only worth showing at Medium or High. */
+export const GATE_TIERS: readonly SceneTier[] = ['high', 'medium'];
+
+/** The visitor's stored choice of 3D. Storage unavailable: 2D, every page load. */
+export function storedExperience(): Experience {
+  try {
+    return localStorage.getItem(EXPERIENCE_KEY) === '3d' ? '3d' : '2d';
+  } catch {
+    return '2d';
+  }
+}
+
+export function storeExperience(next: Experience) {
+  try {
+    if (next === '3d') localStorage.setItem(EXPERIENCE_KEY, '3d');
+    else localStorage.removeItem(EXPERIENCE_KEY);
+  } catch {
+    // Not remembered: 2D again on the next page load.
+  }
+}
+
+/** Reduced motion and save-data always mean 2D, whatever was stored or forced. */
+export function experienceRuledOut(): string | null {
+  if (prefersReducedMotion()) return 'prefers-reduced-motion';
+  if (saveData()) return 'save-data';
+  return null;
 }
 
 /**
