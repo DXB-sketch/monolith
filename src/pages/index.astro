@@ -140,6 +140,7 @@ const orbitManifest = JSON.stringify({
   jsonLd={studio(Astro.site!)}
   stage={false}
   footerCta={false}
+  preloadFonts={['sora-latin-500-normal.woff2']}
   description="Custom websites for South East Queensland businesses: fast, accessible and designed for you, from $699. One person, Dexter, from the first chat to well after launch."
 >
   <div class="landing" data-landing>
@@ -800,9 +801,11 @@ const orbitManifest = JSON.stringify({
     --hero-top: calc(var(--nav-height) + var(--nav-offset) + clamp(1.5rem, 0.5rem + 3vw, 3.5rem));
     display: grid;
     align-items: center;
-    min-height: 100vh;
-    min-height: 100svh;
-    padding-block: var(--hero-top) clamp(2.5rem, 1.5rem + 3vw, 4rem);
+    /* A viewport plus the next stratum's overlap, so nothing below starts in the
+       first view: the desktop pin's spacing then moves only off-screen content (no CLS). */
+    min-height: calc(100vh + var(--overlap));
+    min-height: calc(100svh + var(--overlap));
+    padding-block: var(--hero-top) calc(clamp(2.5rem, 1.5rem + 3vw, 4rem) + var(--overlap));
   }
 
   .hero {

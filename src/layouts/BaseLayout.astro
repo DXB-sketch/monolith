@@ -31,6 +31,8 @@ interface Props {
    * DOM (it persists across navigations) but is hidden by a data attribute.
    */
   stage?: boolean;
+  /** Extra font files (public/fonts) to preload: weights this page's first view needs. */
+  preloadFonts?: string[];
 }
 
 const {
@@ -43,6 +45,7 @@ const {
   jsonLd,
   noindex = false,
   stage = true,
+  preloadFonts = [],
 } = Astro.props;
 const fullTitle = title ? `${title} — ${SITE.name}` : `${SITE.name} — ${SITE.location}`;
 // One canonical form per page: no trailing slash (except the root), same as the sitemap.
@@ -103,6 +106,10 @@ const structured = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
       type="font/woff2"
       crossorigin
     />
+
+    {preloadFonts.map((file) => (
+      <link rel="preload" href={`/fonts/${file}`} as="font" type="font/woff2" crossorigin />
+    ))}
 
     <!-- Mark JS as available before first paint so no-JS fallbacks never flash.
          The experience mode (2D unless the visitor entered 3D at the gate, or

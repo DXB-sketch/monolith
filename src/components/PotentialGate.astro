@@ -136,6 +136,13 @@
     backdrop-filter: var(--frost-blur);
   }
 
+  /* Wide screens: centred, clear of the HUD's readouts (left) and chapter index (right). */
+  @media (min-width: 64rem) {
+    .gate__panel {
+      margin-inline: auto;
+    }
+  }
+
   @media (max-width: 22rem) {
     .gate__panel {
       padding-inline: var(--space-m);
