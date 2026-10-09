@@ -99,7 +99,7 @@ export const SERVICES: Service[] = [
     included: [
       'Everything in Flow',
       'A custom 3D scene or scroll-driven story at the heart of the site',
-      'Tuned to run smoothly on phones, with a fallback for older devices',
+      'Optional 3D, tuned to run smoothly on everyday phones, with a lighter fallback built in',
       'Accessibility checked throughout, including keyboard and reduced motion',
       'Polished to award-submission standard',
     ],

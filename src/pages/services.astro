@@ -28,7 +28,16 @@ import { SERVICES, PROCESS, FAQ, CARE } from '../lib/site';
       <ul class="services__grid">
         {SERVICES.map((service, index) => (
           <li data-reveal>
-            <ServiceCard service={service} index={index} detailed level={3} />
+            <ServiceCard service={service} index={index} detailed level={3}>
+              {service.name === 'Eruption' && (
+                <p class="service-card__note">
+                  Want to see how far it can go? <a href="/potential">See the potential</a>, a
+                  high-performance 3D demo that needs a powerful device. Client builds are made
+                  lighter. The Molten Core scene is a showcase at the very top end of browser
+                  performance, so it needs a powerful device.
+                </p>
+              )}
+            </ServiceCard>
           </li>
         ))}
       </ul>
