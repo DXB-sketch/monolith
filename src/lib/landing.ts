@@ -102,8 +102,10 @@ export function mountLanding(root: HTMLElement): () => void {
     });
   }
 
-  // Fonts change line lengths, so section heights: measure again once they're in.
-  document.fonts?.ready.then(() => ScrollTrigger.refresh());
+  // Fonts still arriving change line lengths, so section heights: measure again
+  // once they're in (one refresh, and none at all when they already are).
+  if (document.fonts && document.fonts.status !== 'loaded')
+    document.fonts.ready.then(() => ScrollTrigger.refresh());
 
   return () => stops.forEach((stop) => stop());
 }

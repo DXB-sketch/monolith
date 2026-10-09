@@ -13,7 +13,7 @@
  * follows. Off screen, nothing is drawn or fetched. Save-data, reduced motion
  * and 2g/3g keep frame 0. Bitmaps are released when the page is swapped.
  */
-import { gsap, ScrollTrigger } from './scroll';
+import { gsap } from './scroll';
 import { afterLoadIdle, prefersReducedMotion } from './motion';
 import { saveData, slowConnection } from '../scene/quality';
 
@@ -106,6 +106,37 @@ function createPlayer(
     if (readout) readout.textContent = `${String(Math.round(index * set.step)).padStart(3, '0')}°`;
   }
 
+  // Fetching runs in parallel (network only); decoding is one frame per idle
+  // callback, so a burst of arriving frames never becomes one long task.
+  const decodeQueue: { index: number; blob: Blob }[] = [];
+  let decoding = false;
+  const idle = (task: () => void) =>
+    'requestIdleCallback' in window
+      ? requestIdleCallback(task, { timeout: 1000 })
+      : setTimeout(task, 16);
+
+  const decodeNext = () => {
+    if (decoding || disposed || !visible) return;
+    const job = decodeQueue.shift();
+    if (!job) return;
+    decoding = true;
+    idle(() => {
+      createImageBitmap(job.blob)
+        .then((bitmap) => {
+          if (disposed) return bitmap.close();
+          bitmaps[job.index] = bitmap;
+          draw();
+        })
+        .catch(() => {
+          // An undecodable frame only means a neighbour shows instead.
+        })
+        .finally(() => {
+          decoding = false;
+          decodeNext();
+        });
+    });
+  };
+
   const pump = () => {
     while (!disposed && visible && started && inFlight < CONCURRENCY && next < order.length) {
       const index = order[next++]!;
@@ -115,11 +146,9 @@ function createPlayer(
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           return response.blob();
         })
-        .then((blob) => createImageBitmap(blob))
-        .then((bitmap) => {
-          if (disposed) return bitmap.close();
-          bitmaps[index] = bitmap;
-          draw();
+        .then((blob) => {
+          decodeQueue.push({ index, blob });
+          decodeNext();
         })
         .catch(() => {
           // A missing frame only means a neighbour shows instead.
@@ -136,6 +165,7 @@ function createPlayer(
     if (visible) {
       draw();
       pump();
+      decodeNext();
     }
   });
   observer.observe(figure);
@@ -198,7 +228,6 @@ export function mountOrbit(root: HTMLElement): () => void {
         ? { trigger: hero, start: 'top top', end: '+=100%', pin: true, scrub: 0.6 }
         : { trigger: hero, start: 'top top', end: 'bottom top', scrub: 0.6 },
     });
-    ScrollTrigger.refresh();
     return () => player.dispose();
   });
 
