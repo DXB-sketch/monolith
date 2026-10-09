@@ -1,0 +1,126 @@
+---
+/**
+ * A package on the 2D landing page (Phase 6): label, name, price, what's
+ * included and a way to start. ServiceCard (the Services page and the story)
+ * leads with the description instead and has no button, so this is its own card.
+ * The highlighted card (Eruption) gets the ember border and the primary button;
+ * anything in the default slot sits under its list.
+ */
+import type { Service } from '../lib/site';
+import { CTA } from '../lib/site';
+
+interface Props {
+  service: Service;
+  index: number;
+  /** The button's words, e.g. "Start with Ember". */
+  action: string;
+  highlight?: boolean;
+}
+
+const { service, index, action, highlight = false } = Astro.props;
+const amount = service.price.replace(/^from\s+/i, '');
+const from = amount !== service.price;
+---
+
+<article class:list={['package', { 'package--highlight': highlight }]}>
+  <p class="label package__label">
+    <span class="package__num">0{index + 1}</span>
+    {service.package}
+  </p>
+  <h3 class="package__name">{service.name}</h3>
+  <p class="package__price">
+    {from && <span class="package__from">from</span>}
+    {amount}
+  </p>
+  <ul class="package__list">
+    {service.included.map((item) => (
+      <li>{item}</li>
+    ))}
+  </ul>
+  <slot />
+  <a
+    class:list={['btn', highlight ? 'btn--primary' : 'btn--ghost', 'package__action']}
+    href={CTA.href}
+    data-magnetic={highlight ? '' : undefined}
+  >
+    {action}
+    <span class="btn__arrow" aria-hidden="true">
+      →
+    </span>
+  </a>
+</article>
+
+<style>
+  .package {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto auto 1fr auto;
+    gap: var(--space-s);
+    height: 100%;
+    padding: var(--space-l) var(--space-l) var(--space-l);
+    border: 1px solid var(--rule-ember);
+    border-radius: 6px;
+    background: rgb(var(--basalt-2-rgb) / 0.6);
+  }
+
+  .package--highlight {
+    border-color: var(--ember);
+    background:
+      radial-gradient(120% 60% at 50% 0%, rgb(var(--ember-rgb) / 0.22), transparent 70%),
+      var(--basalt-2);
+    box-shadow:
+      0 0 0 1px rgb(var(--lava-rgb) / 0.18),
+      0 30px 80px -40px rgb(var(--lava-rgb) / 0.35);
+  }
+
+  .package__num {
+    margin-right: 0.6em;
+    color: var(--lava);
+  }
+
+  .package__name {
+    font-size: var(--step-3);
+    font-weight: var(--weight-display);
+    letter-spacing: var(--tracking-display);
+    line-height: 1.05;
+  }
+
+  .package__price {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding-bottom: var(--space-s);
+    border-bottom: 1px solid var(--rule-ember);
+    color: var(--bone);
+    font-size: var(--step-2);
+    font-weight: var(--weight-strong);
+    letter-spacing: -0.01em;
+  }
+
+  .package__from {
+    color: var(--ash);
+    font-family: var(--font-mono);
+    font-size: var(--step--2);
+    font-weight: var(--weight-mono);
+    letter-spacing: var(--tracking-mono);
+    text-transform: uppercase;
+  }
+
+  .package__list {
+    display: grid;
+    align-content: start;
+    gap: var(--space-2xs);
+    margin: 0;
+    padding-left: 1.1em;
+    font-size: var(--step--1);
+  }
+
+  .package__list li::marker {
+    color: var(--lava);
+  }
+
+  .package__action {
+    justify-self: start;
+    margin-top: var(--space-2xs);
+  }
+</style>

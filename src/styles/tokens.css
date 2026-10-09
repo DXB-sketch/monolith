@@ -17,6 +17,11 @@
   --ash: #b5aaa0;
   --ash-soft: #cfc4b8;
   --bone: #efe8e0;
+  /* Phase 6, the 2D landing page's strata: the second basalt tone and the
+     ember-brown rule between strata (UI only; mirrored in palette.ts). Every
+     text colour passes WCAG AA on both basalt tones (PHASE_6_COMPLETE.md). */
+  --basalt-2: #13110f;
+  --rule-ember: #3a2a20;
 
   /* Channel triplets for translucent mixes: rgb(var(--obsidian-rgb) / 0.6) */
   --basalt-rgb: 11 9 9;
@@ -25,6 +30,8 @@
   --lava-rgb: 255 90 31;
   --lava-hot-rgb: 255 176 112;
   --bone-rgb: 239 232 224;
+  --basalt-2-rgb: 19 17 15;
+  --ember-rgb: 142 50 20;
 
   /* ── Semantic aliases ───────────────────────────────────────────────── */
   --color-bg: var(--basalt);

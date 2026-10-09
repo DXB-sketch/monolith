@@ -606,10 +606,10 @@ let pageReveals: RevealController | null = null;
 let revealToken = 0;
 
 /**
- * Content pages (anything without the home story) reveal their `[data-reveal]`
+ * Every page without the story (/potential) reveals its `[data-reveal]`
  * blocks with the same rules as the story. GSAP is only fetched when the page
  * has some, after first paint, and never with reduced motion. Scrolling stays
- * native (Lenis belongs to the home story).
+ * native (Lenis belongs to the 3D story).
  */
 async function mountPageReveals() {
   const root = document.querySelector<HTMLElement>('main');
@@ -621,8 +621,9 @@ async function mountPageReveals() {
   try {
     const mod = await withTimeout(import('./reveal'), STORY_CHUNK_TIMEOUT_MS, 'reveal chunk load');
     if (token !== revealToken || !root.isConnected || prefersReducedMotion()) return;
-    // The poster tier gets simple fades; anything else (or not yet known) the full reveals.
-    const created = await mod.mountReveals(root, !pending && tier === 'poster' ? 'lite' : 'full');
+    // Phase 6: the full reveals everywhere. The poster used to mean a weak device
+    // (simple fades); now it's the 2D default, the experience nearly everyone gets.
+    const created = await mod.mountReveals(root, 'full');
     if (token !== revealToken || !root.isConnected) {
       created.destroy();
       return;

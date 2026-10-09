@@ -4,7 +4,7 @@ client: '[SUBJECT TO BE CHOSEN]'
 clientType: Unofficial concept
 year: '[YEAR TO BE SUPPLIED]'
 summary: An unofficial redesign concept. Not a client project, and not commissioned by the subject.
-order: 3
+order: 4
 isConcept: true
 # Not chosen yet: left out of the site until it is.
 draft: true

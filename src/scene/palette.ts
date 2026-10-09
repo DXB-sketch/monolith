@@ -16,6 +16,9 @@ export const PALETTE_HEX = {
   ash: '#B5AAA0',
   ashSoft: '#CFC4B8',
   bone: '#EFE8E0',
+  /** UI only (the 2D landing page's strata); kept here so the two lists match. */
+  basalt2: '#13110F',
+  ruleEmber: '#3A2A20',
 } as const;
 
 export type PaletteKey = keyof typeof PALETTE_HEX;
